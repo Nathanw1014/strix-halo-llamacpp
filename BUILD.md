@@ -59,6 +59,6 @@ cmake --build build-hip --target llama-server llama-cli llama-bench -j
 
 ```
 VK_BUILD=<...> MESA_ICD_DIR=<...> LIBDRM_DIR=<...> HIP_BUILD=<...> ./build-from-source.sh
-./build-images.sh            # docker images strix-fa-vulkan / strix-fa-hip
-tar czf strix-fa-vulkan-portable.tar.gz vulkan README.md   # portable dir for a release
+./build-images.sh            # docker images strix-halo-llamacpp:vulkan / strix-halo-llamacpp:hip
+tar czf strix-halo-llamacpp:vulkan-portable.tar.gz vulkan README.md   # portable dir for a release
 ```

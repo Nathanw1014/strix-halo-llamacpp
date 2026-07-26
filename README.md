@@ -44,18 +44,18 @@ Requires the Vulkan loader (`libvulkan1`) and read access to `/dev/dri`. Everyth
 
 ### Container (Vulkan)
 ```
-docker build -t strix-fa-vulkan -f Dockerfile.vulkan .
+docker build -t strix-halo-llamacpp:vulkan -f Dockerfile.vulkan .
 docker run --rm --device /dev/dri -v /path/to/models:/models -p 8080:8080 \
-  strix-fa-vulkan -m /models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
+  strix-halo-llamacpp:vulkan -m /models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
 ```
 
 ### Container (HIP / ROCm, decode fix)
 ```
-docker build -t strix-fa-hip -f Dockerfile.hip .
+docker build -t strix-halo-llamacpp:hip -f Dockerfile.hip .
 docker run --rm --device /dev/kfd --device /dev/dri \
   --group-add video --group-add render --security-opt seccomp=unconfined \
   -v /path/to/models:/models -p 8080:8080 \
-  strix-fa-hip -m /models/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
+  strix-halo-llamacpp:hip -m /models/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
 ```
 
 ### distrobox / toolbox (interactive)
@@ -67,7 +67,7 @@ they "just work" from the shell.
 
 **distrobox** (podman or docker backend):
 ```
-distrobox create --name strix-fa --image <registry>/strix-fa-vulkan
+distrobox create --name strix-fa --image <registry>/strix-halo-llamacpp:vulkan
 distrobox enter strix-fa
 # then, inside:
 llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 -ctk q4_0 -ctv q4_0 --host 0.0.0.0
@@ -76,12 +76,12 @@ llama-bench  -m ~/models/MODEL.gguf -ngl 99 -fa 1 -p 512 -n 32 -d 0,32768
 
 **toolbox** (Fedora / immutable distros):
 ```
-toolbox create strix-fa --image <registry>/strix-fa-vulkan
+toolbox create strix-fa --image <registry>/strix-halo-llamacpp:vulkan
 toolbox enter strix-fa
 llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
 ```
 
-For the HIP image use `strix-fa-hip` the same way (it still needs `/dev/kfd`, which distrobox/toolbox
+For the HIP image use `strix-halo-llamacpp:hip` the same way (it still needs `/dev/kfd`, which distrobox/toolbox
 pass through along with `/dev/dri`).
 
 ## Recommended flags
