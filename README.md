@@ -92,9 +92,9 @@ pass through along with `/dev/dri`).
   you want a little more KV quality; use `f16` only for short prompts where it does not matter.
 - **mmid** MoE-prefill flags are ON by default in the Vulkan wrapper
   (`GGML_VK_MMID_ROWLISTS/SMALLN/BM64/WAVE32`). To turn them off, set any to `0` before running.
-  `GGML_VK_MMID_F16B` is off by default (model-dependent: small gain on some MoEs, neutral to
-  slightly negative on others). It is now safe to opt in with `GGML_VK_MMID_F16B=1`; an earlier
-  abort on the experimental `Q2_0` type has been fixed (it now falls back to the standard path).
+  `GGML_VK_MMID_F16B` is **on by default** (this is a squeeze-everything build; it is safe and gives
+  a small gain on some MoEs like the 35B, neutral elsewhere). Disable it with `GGML_VK_MMID_F16B=0`.
+  An earlier abort on the experimental `Q2_0` type has been fixed (it now falls back to the standard path).
 
 ## Numbers (measured on this box, r=3, services stopped)
 
