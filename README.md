@@ -9,13 +9,19 @@ evidence pack.
 
 ## Speedups at a glance
 
-**End-to-end vs stock f16, at 64k context** (this box, `amd_iommu=off`, measured):
+**q8 KV + fixes vs stock f16** (this box, `amd_iommu=off`, pp512 / tg32 t/s, measured). The fix doesn't speed up
+short prompts — at d0 quantized KV ≈ f16 (nothing to dequantize yet). Its value is at **depth**, where stock f16
+collapses while quantized KV stays fast, so the win grows with context:
 
-| Model (arch) | Prefill (q8 KV) | Decode (q4 KV) |
-|---|---:|---:|
-| Qwen3-Coder-30B-A3B (hd128 MoE) | **2.66x** (72 → 191) | **+45%** (23 → 33) |
-| Qwen3.6-35B-A3B (hd256 MoE) | **+9%** (492 → 536) | **+18%** (43 → 50) |
-| Qwen2.5-7B (hd128 dense) | **+91%** (172 → 329) | **+22%** (26 → 32) |
+| Model (arch) | Prefill d0 | Prefill 64k | Decode d0 | Decode 64k |
+|---|---:|---:|---:|---:|
+| Qwen3-Coder-30B-A3B (hd128 MoE) | 1218 | **191 = 2.66x** | 68 | **32 = +38%** |
+| Qwen3.6-35B-A3B (hd256 MoE) | 1368 | 537 = **+9%** | 60 | 49 = **+15%** |
+| Qwen2.5-7B (hd128 dense) | 1353 | 329 = **+91%** | 47 | 32 = **+22%** |
+
+Values are q8 KV + fixes; the ×/% is vs stock f16 **at that depth**. At d0 it's ~parity (~1.0x) — every win is at
+depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k while ours holds **191**. (q4 KV gives a
+little more decode at 1/4 the KV memory — see the charts.)
 
 **What each fix contributes:**
 
