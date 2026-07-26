@@ -113,7 +113,8 @@ pass through along with `/dev/dri`).
 ## Benchmarks
 
 Measured on this box (Radeon 8060S / gfx1151), Mesa 26.3.0-devel + this build, `-fa 1`, r=3, services
-stopped. "fixes" = dequant-once + q4 transpose + the mmid stack (the toolbox default).
+stopped, **`amd_iommu=off`** (see host tuning). "fixes" = dequant-once + q4 transpose + the mmid stack
+(the toolbox default). Start/end canaries agreed to within 0.3%, so no thermal drift.
 
 ![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k](graphs/01_coder30b_prefill_2.66x.png)
 
@@ -121,16 +122,19 @@ stopped. "fixes" = dequant-once + q4 transpose + the mmid stack (the toolbox def
 
 | context | stock f16 | fixes + q4 KV | gain |
 |---:|---:|---:|---:|
-| 0 | 1132 | 1156 | +2% |
-| 16k | 371 | 489 | +32% |
-| 32k | 202 | 315 | +56% |
-| 64k | 69.8 | 185 | **2.66x** |
+| 0 | 1163 | 1209 | +4% |
+| 16k | 377 | 504 | +34% |
+| 32k | 205 | 322 | +57% |
+| 64k | 71.9 | 190 | **2.64x** |
+
+(q8 KV reaches **2.66x** at 64k — same win, higher KV quality, and it's the shipping PR's scope. q4 shown
+here since it's the recommended long-context default.)
 
 ![Qwen3.6-35B-A3B Q4_K_XL, same weights: quant KV vs f16 on prefill and decode, against the best public f16](graphs/02_35b_q4kxl_samequant.png)
 
-**Qwen3.6-35B-A3B (head-dim 256, UD-Q4_K_XL, same weights), at 64k:** quantized KV gives **+12% prefill
-and +18% decode** vs stock f16, at **1/4 the KV memory**. The decode figure matches the best public f16
-numbers (kyuz0) on the same model, so it is a real win, not a baseline artifact.
+**Qwen3.6-35B-A3B (head-dim 256, UD-Q4_K_XL, same weights), at 64k:** quantized KV gives **+9% prefill
+and +18% decode** vs stock f16, at **1/4 the KV memory**. Our stock-f16 decode (42.7 t/s @64k) matches the
+best public f16 numbers (kyuz0, 43.2) on the same model, so the quant-KV win is real, not a baseline artifact.
 
 ![Decode throughput vs depth: quantized KV also generates faster than f16 at depth, both models](graphs/03_decode_both.png)
 
@@ -154,8 +158,10 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   access, which can help on this bandwidth-bound hardware. This is host kernel config, not part of the
   toolbox. To try it: reboot, at the GRUB menu press `e`, append `amd_iommu=off` to the `linux` line,
   `Ctrl-X` (one-shot); or add it to `GRUB_CMDLINE_LINUX_DEFAULT` and `sudo update-grub` to persist. It is
-  a security tradeoff (the IOMMU provides DMA isolation), so verify the effect on your box first. (Measured
-  effect on this box: to be filled in from the A/B.)
+  a security tradeoff (the IOMMU provides DMA isolation), so verify the effect on your box first. **Measured
+  here (off vs on, same build): ~+3–5% prefill (larger on the 35B MoE than on Coder-30B), roughly neutral
+  decode** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
+  taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
 
 ## Publishing (maintainers)
 

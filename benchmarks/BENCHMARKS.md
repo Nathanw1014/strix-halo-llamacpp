@@ -126,6 +126,14 @@ Qwen3.6-35B-A3B = Q5_K_XL, head-dim 256, gqa 8. All values t/s, r=3.
 "post"/"deq-once" = dequant-once ON; "pre"/"base" = OFF (plain master). Start-vs-end f16
 canary: deep metrics within 1%, d0 pp within +3.5%.
 
+> **Re-validated on `amd_iommu=off` (0–64k, 2026-07-26).** The full matrix was re-run on a clean iommu-off
+> box; start/end canaries agreed within 0.3% (no drift). The headline reproduces: Coder-30B prefill @64k
+> stock-f16 71.9 → q4 190 (**2.64x**) / q8 191 (**2.66x**); 35B decode @64k **+18%**. The IOMMU itself
+> accounts for only **~+3–5% prefill, ~neutral decode** (measured off-vs-on, same build), so the detailed
+> per-depth tables below — from the original iommu-on run — sit a few percent low but are unchanged in shape
+> and conclusion. Metric note: the repo graphs are **pp512**; the "vs public" section is **pp2048** to match
+> kyuz0, so their prefill percentages differ by construction (pp512 @64k = +9% on the 35B Q4_K_XL).
+
 ### Headline
 
 - **q4 gets dequant-once too, and it lands the same win as q8.** Coder-30B prefill at 64k:
