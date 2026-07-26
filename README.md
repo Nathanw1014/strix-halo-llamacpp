@@ -7,6 +7,34 @@ MoE-prefill fixes plus a current GPU driver, so quantized KV cache is fast inste
 The measurements behind these fixes (matrices, methodology, raw data) live in the companion
 evidence pack.
 
+## Speedups at a glance
+
+**End-to-end vs stock f16, at 64k context** (this box, `amd_iommu=off`, measured):
+
+| Model (arch) | Prefill (q8 KV) | Decode (q4 KV) |
+|---|---:|---:|
+| Qwen3-Coder-30B-A3B (hd128 MoE) | **2.66x** (72 → 191) | **+45%** (23 → 33) |
+| Qwen3.6-35B-A3B (hd256 MoE) | **+9%** (492 → 536) | **+18%** (43 → 50) |
+| Qwen2.5-7B (hd128 dense) | **+91%** (172 → 329) | **+22%** (26 → 32) |
+
+**What each fix contributes:**
+
+| Fix / knob | Backend | Contribution |
+|---|---|---|
+| FA dequant-once (#25494) | Vulkan | **the 2.66x** — dequantize q8 KV once in the FA kernel (prefill) |
+| all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
+| mmid row-list prepass | Vulkan | **+8.4%** MoE prefill (model-dependent; ~1–2% on Coder at depth) |
+| mmid scache / BM64 | Vulkan | +1.67% / +1.3% (small waste-removals) |
+| mmid WAVE32 / F16B | Vulkan | +2.8% / +2.4% (tweaks; F16B on by default) |
+| mmid TILE16 / INT | Vulkan | −3.8% / −8.5% (documented negatives, never enabled) |
+| HIP tile-dequant KV | HIP/ROCm | **+128% / +232%** decode @32k / 64k (beats f16) |
+| `amd_iommu=off` | host | ~+3–5% prefill (optional host tuning) |
+
+Honest read: on Coder the **FA dequant-once fix is essentially the entire prefill win**; `rowlists` is the
+real MoE-prefill fix (larger on other shapes); the rest are small waste-removals and the knob-tweaks are
+marginal-to-negative — as expected on a bandwidth-bound kernel. Full per-depth matrices + charts are below
+and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
+
 ## What's inside
 
 - **`vulkan/`** self-contained Vulkan/RADV build (recommended default backend on this hardware).
