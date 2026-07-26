@@ -32,6 +32,20 @@ and run `build-from-source.sh`. The commands below assume the `vulkan/` dir is p
   the tile kernel (dequant once, batched across GQA heads) instead of the vec kernel that repeats
   the dequant per query head. Fixes quantized-KV **decode** at depth on ROCm.
 
+## Branches (upstreaming)
+
+Each fix is kept on its own clean, minimal branch of the llama.cpp fork so it can be reviewed and
+upstreamed independently. This toolbox stacks all of them.
+
+| Branch | Fix | Status |
+|---|---|---|
+| `vulkan-coopmat1-fa-dequant-transpose` | Vulkan FA dequant-once (prefill) | in-flight PR #25494 |
+| [`vulkan-mmid-rowlists`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-rowlists) | mmid row-list prepass (MoE prefill) | upstream candidate, pushed |
+| `fa-tile-dequant-on-load` | HIP tile-dequant (quantized-KV decode) | public branch, testable |
+
+Full inventory (combined + experimental branches) and the honest **fixes vs config-tweaks** taxonomy
+(one real fix, the rest marginal knobs): **[BRANCHES.md](BRANCHES.md)**.
+
 ## Quickstart
 
 ### Portable (Vulkan, no container)

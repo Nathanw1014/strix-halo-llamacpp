@@ -100,9 +100,9 @@ wasted work beats the wall while wave-size/tile knobs cannot.
 
 - Branch: `Nathanw1014/llama.cpp` `mmid-fullstack`. Env-gated; defaults undecided.
 - Correctness: 790/790 `MUL_MAT_ID`.
-- Measured (separate window, custom Mesa 26.2-dev), pp512:
-  - Qwen3.6-35B-A3B: d0 +20.1%, d32k +27.7%
-  - Qwen3-Coder-30B-A3B: d32k +38.2%
+- Measured on this stack (the ceiling matrix below, mmid isolated via env toggle), pp512:
+  - Qwen3.6-35B-A3B: +15% at d0, tapering to +7% at 64k (the MoE-heavy model where mmid pays)
+  - Qwen3-Coder-30B-A3B: near-zero (its 128-expert/top-8 routing already fits the tiles natively)
 
 ### (experimental) all-quant dequant-transpose - extends #25494 to q4/q5
 
@@ -233,24 +233,27 @@ prefill win is essentially all dequant-once (stock f16 70 -> all-fixes q4 185 = 
 
 ## vs public data
 
-The public Strix Halo corpus DOES report depth (correcting an earlier assumption) - but almost all of
-it runs **f16 KV**. The cleanest public reference is kyuz0/amd-strix-halo-toolboxes (single box, raw JSON,
-f16 KV, Q4_K_XL weights). Their depth data is on Qwen3.6-35B-A3B, which is the head-dim (256) where our
-dequant-once prefill fix is *weakest* (+9%), so the honest comparison there is decode + memory, not a
-prefill blowout.
+The public Strix Halo corpus DOES report depth (correcting an earlier assumption) - but almost all of it
+runs **f16 KV**. The cleanest public reference is kyuz0/amd-strix-halo-toolboxes (single box, raw JSON, f16
+KV). To compare cleanly we ran the SAME model at kyuz0's exact weight quant (Qwen3.6-35B-A3B UD-Q4_K_XL), so
+the only variables are KV type + our fixes, not weights.
 
-**Qwen3.6-35B-A3B, kyuz0 (f16 KV) vs ours (q4_0 KV, all fixes, pp2048 ub1024):**
+**Same box, same weights (UD-Q4_K_XL), stock f16 KV vs fixes + q4 KV (pp2048 / tg32, ub1024):**
 
-| depth | metric | kyuz0 f16 KV | ours q4 KV | delta | KV footprint |
-|---:|---|---:|---:|---:|---:|
-| 32768 | pp2048 | 715.5 | 733.0 | +2% | 1/4 |
-| 65536 | pp2048 | 524.7 | 509.0 | -3% | 1/4 |
-| 32768 | tg32 | 49.2 | 52.1 | +6% | 1/4 |
-| 65536 | tg32 | 43.2 | 48.5 | **+12%** | 1/4 |
+| depth | prefill: stock f16 -> fixes q4 | decode: stock f16 -> fixes q4 | KV footprint |
+|---:|---|---|---:|
+| 32768 | 689 -> 746 (+8%) | 49.7 -> 55.2 (+11%) | 1/4 |
+| 65536 | 465 -> 522 (+12%) | 42.6 -> 50.3 (**+18%**) | 1/4 |
 
-Honest read: **matched prefill, +6-12% decode, at 1/4 the KV memory** - despite our *heavier* Q5_K weights
-(kyuz0 uses lighter Q4_K, which flatters their prefill). Independent corroboration that quant-KV beats
-f16 on decode at depth: the `strix-halo-guide` filled_kv_decode.csv (35B @64k: f16 41.4 vs q4_0 51.3).
+**Cross-check vs kyuz0's published f16 (same model, Q4_K_XL):** our stock-f16 decode lands within ~1-2% of
+kyuz0's (42.6 vs 43.2 @64k; 49.7 vs 49.2 @32k), so our baseline reproduces theirs and the comparison is
+valid. That puts our q4 decode **+16% over kyuz0's f16 at 64k, at 1/4 the KV memory**.
+
+Honest read: **+12% prefill and +18% decode vs stock f16 at matched weights, 1/4 the KV memory.** The decode
+win cross-validates against public data. The prefill figure is the same-box A/B: our f16 prefill baseline
+sits a bit below kyuz0's (a build/driver gap), so we do not claim a cross-box prefill win. Independent
+corroboration that quant-KV beats f16 on decode at depth: the `strix-halo-guide` filled_kv_decode.csv
+(35B @64k: f16 41.4 vs q4_0 51.3).
 
 The **2.6x prefill** figure is a *separate* claim: our own f16 -> quant on Qwen3-Coder-30B-A3B (hd128,
 where dequant-once is strongest). There is no clean public depth counterpart for that model/config, so it
