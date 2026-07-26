@@ -125,8 +125,9 @@ with depth (dramatic at head-dim 128, parity-restoring at head-dim 256). The mmi
 MoE-prefill speedup on top (model-dependent). Decode: quantized KV is both smaller and faster at depth.
 Net guidance: use `-ctk q4_0 -ctv q4_0` for long context.
 
-Full matrices, raw `llama-bench` output, methodology, and the per-fix branch inventory live in the companion
-evidence pack (`strix-halo-fa`).
+Full matrices, raw `llama-bench` output, methodology, and correctness gates are in
+[benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md); the per-fix branch inventory and the honest
+fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
 
 ## Toolchain
 

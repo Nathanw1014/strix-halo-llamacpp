@@ -1,0 +1,16 @@
+[01:12:59] stop services
+[01:13:08] === rowlists: test-backend-ops MUL_MAT_ID ===
+2/2 backends passed
+[01:13:22] === rowlists ON vs OFF, 35B pp512 d0/16k ===
+[01:14:06]   on ok
+[01:14:35]   off ok
+[01:14:50] === pp2048 CEIL q4 c30 ub512 ===
+[01:21:35]   ok
+[01:21:50] === pp2048 CEIL q4 c30 ub1024 ===
+[01:27:43]   ok
+[01:27:58] === pp2048 CEIL q4 q35 ub512 ===
+[01:31:42]   ok
+[01:31:57] === pp2048 CEIL q4 q35 ub1024 ===
+[01:35:02]   ok
+[01:35:17] === FINALIZE DONE ===
+[01:35:17] restore

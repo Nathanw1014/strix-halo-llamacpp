@@ -1,0 +1,28 @@
+[23:48:23] stop services
+[23:48:31] driver: Mesa 26.3.0-devel (git-d18d598e27) | BASE=5c3a586 CEIL=63f88cc
+[23:48:31] === canary0 / coder30b / f16 ===
+[23:58:45]   ok
+[23:59:05] === base / coder30b / f16 ===
+[00:08:57]   ok
+[00:09:17] === base / coder30b / q4 ===
+[00:17:05]   ok
+[00:17:25] === ceilNoMmid / coder30b / q4 ===
+[00:23:14]   ok
+[00:23:34] === ceil / coder30b / q4 ===
+[00:29:19]   ok
+[00:29:39] === ceil / coder30b / q8 ===
+[00:35:32]   ok
+[00:35:52] === base / qwen35b / f16 ===
+[00:39:35]   ok
+[00:39:55] === base / qwen35b / q4 ===
+[00:43:41]   ok
+[00:44:01] === ceilNoMmid / qwen35b / q4 ===
+[00:47:20]   ok
+[00:47:40] === ceil / qwen35b / q4 ===
+[00:50:43]   ok
+[00:51:03] === ceil / qwen35b / q8 ===
+[00:54:09]   ok
+[00:54:29] === canary1 / coder30b / f16 ===
+[01:04:34]   ok
+[01:04:54] === CEIL MATRIX DONE ===
+[01:04:54] restore
