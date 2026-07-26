@@ -15,9 +15,9 @@ collapses while quantized KV stays fast, so the win grows with context:
 
 | Model (arch) | Prefill d0 | Prefill 64k | Decode d0 | Decode 64k |
 |---|---:|---:|---:|---:|
-| Qwen3-Coder-30B-A3B (hd128 MoE) | 1218 | **191 = 2.66x** | 68 | **32 = +38%** |
-| Qwen3.6-35B-A3B (hd256 MoE) | 1368 | 537 = **+9%** | 60 | 49 = **+15%** |
-| Qwen2.5-7B (hd128 dense) | 1353 | 329 = **+91%** | 47 | 32 = **+22%** |
+| Qwen3-Coder-30B-A3B-Instruct (Q6_K_XL, hd128 MoE) | 1218 | **191 = 2.66x** | 68 | **32 = +38%** |
+| Qwen3.6-35B-A3B (Q4_K_XL, hd256 MoE) | 1368 | 537 = **+9%** | 60 | 49 = **+15%** |
+| Qwen2.5-7B-Instruct (Q4_K_M, hd128 dense) | 1353 | 329 = **+91%** | 47 | 32 = **+22%** |
 
 Values are q8 KV + fixes; the ×/% is vs stock f16 **at that depth**. At d0 it's ~parity (~1.0x) — every win is at
 depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k while ours holds **191**. (q4 KV gives a
