@@ -148,6 +148,20 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
 - GPU driver: Mesa 26.3.0-devel (RADV), built with libdrm 2.4.133, shader compiler shaderc v2026.3-dev.
 - llama.cpp: recent master with the fixes applied. HIP build on ROCm 7.2.4.
 
+## Host tuning (optional)
+
+- **`amd_iommu=off`** (kernel boot parameter): removes IOMMU address-translation overhead on GPU memory
+  access, which can help on this bandwidth-bound hardware. This is host kernel config, not part of the
+  toolbox. To try it: reboot, at the GRUB menu press `e`, append `amd_iommu=off` to the `linux` line,
+  `Ctrl-X` (one-shot); or add it to `GRUB_CMDLINE_LINUX_DEFAULT` and `sudo update-grub` to persist. It is
+  a security tradeoff (the IOMMU provides DMA isolation), so verify the effect on your box first. (Measured
+  effect on this box: to be filled in from the A/B.)
+
+## Publishing (maintainers)
+
+- Images to a registry: `docker login <registry>`, then `REGISTRY=docker.io/<you> ./push-images.sh`.
+- Portable dir to a GitHub Release: `tar czf strix-halo-llamacpp-vulkan-portable.tar.gz vulkan README.md`.
+
 ## Notes and caveats
 
 - Vulkan is the recommended default on this hardware; the HIP image is for quantized-KV
