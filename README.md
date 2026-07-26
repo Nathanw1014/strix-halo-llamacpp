@@ -28,7 +28,7 @@ curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.
 
 **2. Container.** `docker pull ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan` (see [Quickstart](#quickstart)).
 
-**3. Build from source.** Build the **`mmid-fullstack`** branch of the
+**3. Build from source.** Build the **`strix-halo-vulkan`** branch of the
 [fork](https://github.com/Nathanw1014/llama.cpp) (the complete Vulkan stack) — see **[BUILD.md](BUILD.md)**
 for the exact toolchain; `build-from-source.sh` then assembles the built binaries + driver into this layout.
 

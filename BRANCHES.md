@@ -19,9 +19,9 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 
 | Branch | Contents | Use |
 |---|---|---|
-| `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | community "point Strix Halo users here" branch (both backends) |
-| `mmid-fullstack` | #25494 + the full mmid stack (env-gated) | Vulkan MoE-prefill stack |
-| ceiling stack (this repo's toolbox binary) | #25494 + all-quant transpose + mmid + scache + F16B fix | the max-performance build behind the toolbox |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + scache + F16B fix, rebased on upstream **`b10133`** | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate (only iq4_nl fails, known), Coder-30B q8 @64k 2.64x |
+| `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
+| `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 
 ## Experimental
 
