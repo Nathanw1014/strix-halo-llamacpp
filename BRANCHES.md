@@ -13,7 +13,7 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 |---|---|---|---|
 | `vulkan-coopmat1-fa-dequant-transpose` | dequantize q8_0 KV once in the coopmat1 FA kernel (prefill) | Vulkan | in-flight PR #25494 |
 | `vulkan-mmid-rowlists` | mmid row-list prepass: removes the redundant per-workgroup expert-ID scan in `MUL_MAT_ID` | Vulkan | upstream candidate (clean cherry-pick onto master, MUL_MAT_ID 2/2) |
-| `fa-tile-dequant-on-load` | dequantize KV on load in the tile FA kernel, route quantized decode there (decode) | HIP / CUDA | queued behind #25494 (one upstream PR at a time) |
+| `fa-tile-dequant-on-load` | dequantize KV on load in the tile FA kernel, route quantized decode there (decode) | HIP / CUDA | public branch, testable now; upstream PR not yet opened |
 
 ## Combined / max-performance branches
 

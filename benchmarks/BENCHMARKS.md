@@ -79,7 +79,7 @@ GQA heads. Same idea as #25494, opposite backend and opposite half of the sessio
 not prefill). The two are complementary, not overlapping.
 
 - Branch: `Nathanw1014/llama.cpp` `fa-tile-dequant-on-load` (also in `strix-halo-fa-fixes`).
-- Status: **queued** behind #25494 (one upstream PR in flight at a time); branch public + testable now.
+- Status: **public branch, testable now**; upstream PR not yet opened (independent of #25494, different backend).
 - Correctness: `test-backend-ops` FLASH_ATTN 6000/6000, after first closing an upstream test
   gap (quantized KV had zero coverage at head-dim 128 / gqa_ratio 8, the common real shape).
 - Measured (separate ROCm build, so read the deltas not the absolutes; rocWMMA-OFF, the
