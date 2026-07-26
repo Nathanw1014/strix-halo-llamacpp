@@ -1,0 +1,9 @@
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libvulkan1 libgomp1 libelf1 libexpat1 libzstd1 ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY vulkan /opt/strix-fa/vulkan
+ENV PATH=/opt/strix-fa/vulkan:$PATH
+WORKDIR /models
+EXPOSE 8080
+ENTRYPOINT ["/opt/strix-fa/vulkan/llama-server"]
+CMD ["--help"]

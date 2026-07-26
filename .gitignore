@@ -1,0 +1,11 @@
+# Built artifacts are shipped via GitHub Releases + container registry, not git.
+# Regenerate them with ./build-from-source.sh (see BUILD.md).
+vulkan/bin/
+vulkan/driver/
+vulkan/llama-server
+vulkan/llama-cli
+vulkan/llama-bench
+hip/bin/
+*.tar.gz
+MANIFEST.txt
+*.err

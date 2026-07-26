@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Self-contained launcher: bundled Mesa RADV + libdrm, max-perf mmid flags (F16B now safe: opt in with GGML_VK_MMID_F16B=1, model-dependent).
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+export VK_ICD_FILENAMES="$HERE/driver/radeon_icd.x86_64.json"
+export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
+export LD_LIBRARY_PATH="$HERE/driver:$HERE/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+: "${GGML_VK_MMID_ROWLISTS:=1}" "${GGML_VK_MMID_SMALLN:=1}" "${GGML_VK_MMID_BM64:=1}" "${GGML_VK_MMID_WAVE32:=1}"
+export GGML_VK_MMID_ROWLISTS GGML_VK_MMID_SMALLN GGML_VK_MMID_BM64 GGML_VK_MMID_WAVE32
+exec "$HERE/bin/$(basename "$0")" "$@"
