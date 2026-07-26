@@ -96,12 +96,37 @@ pass through along with `/dev/dri`).
   a small gain on some MoEs like the 35B, neutral elsewhere). Disable it with `GGML_VK_MMID_F16B=0`.
   An earlier abort on the experimental `Q2_0` type has been fixed (it now falls back to the standard path).
 
-## Numbers (measured on this box, r=3, services stopped)
+## Benchmarks
 
-- **Qwen3-Coder-30B-A3B** (head-dim 128), prefill at 64k: **2.66x** f16 with q4 KV + fixes.
-- **Qwen3.6-35B-A3B** (head-dim 256), 64k: **+12% prefill, +18% decode** vs stock f16, at 1/4 the
-  KV memory. Decode independently matches the best public f16 numbers on the same model.
-- The prefill win scales with context depth and is largest on head-dim-128 GQA MoE models.
+Measured on this box (Radeon 8060S / gfx1151), Mesa 26.3.0-devel + this build, `-fa 1`, r=3, services
+stopped. "fixes" = dequant-once + q4 transpose + the mmid stack (the toolbox default).
+
+![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k](graphs/01_coder30b_prefill_2.66x.png)
+
+**Qwen3-Coder-30B-A3B (head-dim 128), prefill pp512, stock f16 vs fixes + q4 KV:**
+
+| context | stock f16 | fixes + q4 KV | gain |
+|---:|---:|---:|---:|
+| 0 | 1132 | 1156 | +2% |
+| 16k | 371 | 489 | +32% |
+| 32k | 202 | 315 | +56% |
+| 64k | 69.8 | 185 | **2.66x** |
+
+![Qwen3.6-35B-A3B Q4_K_XL, same weights: quant KV vs f16 on prefill and decode, against the best public f16](graphs/02_35b_q4kxl_samequant.png)
+
+**Qwen3.6-35B-A3B (head-dim 256, UD-Q4_K_XL, same weights), at 64k:** quantized KV gives **+12% prefill
+and +18% decode** vs stock f16, at **1/4 the KV memory**. The decode figure matches the best public f16
+numbers (kyuz0) on the same model, so it is a real win, not a baseline artifact.
+
+![Decode throughput vs depth: quantized KV also generates faster than f16 at depth, both models](graphs/03_decode_both.png)
+
+**How to read it:** the Flash-Attention dequant-once fix removes the quantized-KV prefill penalty and grows
+with depth (dramatic at head-dim 128, parity-restoring at head-dim 256). The mmid row-list fix adds
+MoE-prefill speedup on top (model-dependent). Decode: quantized KV is both smaller and faster at depth.
+Net guidance: use `-ctk q4_0 -ctv q4_0` for long context.
+
+Full matrices, raw `llama-bench` output, methodology, and the per-fix branch inventory live in the companion
+evidence pack (`strix-halo-fa`).
 
 ## Toolchain
 
