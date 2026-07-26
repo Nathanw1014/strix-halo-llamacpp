@@ -81,7 +81,7 @@ they "just work" from the shell.
 
 **distrobox** (podman or docker backend):
 ```
-distrobox create --name strix-fa --image <registry>/strix-halo-llamacpp:vulkan
+distrobox create --name strix-fa --image ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan
 distrobox enter strix-fa
 # then, inside:
 llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 -ctk q4_0 -ctv q4_0 --host 0.0.0.0
@@ -90,7 +90,7 @@ llama-bench  -m ~/models/MODEL.gguf -ngl 99 -fa 1 -p 512 -n 32 -d 0,32768
 
 **toolbox** (Fedora / immutable distros):
 ```
-toolbox create strix-fa --image <registry>/strix-halo-llamacpp:vulkan
+toolbox create strix-fa --image ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan
 toolbox enter strix-fa
 llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
 ```
@@ -159,8 +159,13 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
 
 ## Publishing (maintainers)
 
-- Images to a registry: `docker login <registry>`, then `REGISTRY=docker.io/<you> ./push-images.sh`.
-- Portable dir to a GitHub Release: `tar czf strix-halo-llamacpp-vulkan-portable.tar.gz vulkan README.md`.
+- **Images → ghcr.io** (needs your GitHub auth; `gh auth login` first):
+  `gh auth token | docker login ghcr.io -u nathanw1014 --password-stdin`, then `./push-images.sh`
+  (or `./push-images.sh vulkan` for just the 273 MB Vulkan image — the HIP image is ~29 GB because it
+  bundles the full ROCm runtime).
+- **Portable tarball → GitHub Release**:
+  `tar czf strix-halo-llamacpp-vulkan-portable.tar.gz vulkan README.md`, then
+  `gh release create v0.1 strix-halo-llamacpp-vulkan-portable.tar.gz`.
 
 ## Notes and caveats
 
