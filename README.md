@@ -17,9 +17,22 @@ evidence pack.
 
 ## Getting the binaries
 
-The binaries and bundled driver (~200 MB) are shipped via GitHub Releases (the portable Vulkan tarball)
-and a container registry, not tracked in git. To build from source instead, see **[BUILD.md](BUILD.md)**
-and run `build-from-source.sh`. The commands below assume the `vulkan/` dir is populated.
+Three ways — the first two need **no build and no Docker**:
+
+**1. Portable tarball (recommended for a quick start).** Self-contained — bundles the RADV driver, so it
+doesn't use the host's Mesa; only needs `libvulkan1` + read access to `/dev/dri`:
+```
+curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.1/strix-halo-llamacpp-vulkan-portable.tar.gz | tar xz
+./vulkan/llama-server -m /path/to/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
+```
+
+**2. Container.** `docker pull ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan` (see [Quickstart](#quickstart)).
+
+**3. Build from source.** Build the **`mmid-fullstack`** branch of the
+[fork](https://github.com/Nathanw1014/llama.cpp) (the complete Vulkan stack) — see **[BUILD.md](BUILD.md)**
+for the exact toolchain; `build-from-source.sh` then assembles the built binaries + driver into this layout.
+
+The tarball (32 MB) and container images are shipped via GitHub Releases / ghcr, not tracked in git.
 
 ## The fixes
 
@@ -118,23 +131,24 @@ stopped, **`amd_iommu=off`** (see host tuning). "fixes" = dequant-once + q4 tran
 
 ![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k](graphs/01_coder30b_prefill_2.66x.png)
 
-**Qwen3-Coder-30B-A3B (head-dim 128), prefill pp512, stock f16 vs fixes + q4 KV:**
+**Qwen3-Coder-30B-A3B (head-dim 128), prefill pp512, stock f16 vs fixes + q8 KV:**
 
-| context | stock f16 | fixes + q4 KV | gain |
+| context | stock f16 | fixes + q8 KV | gain |
 |---:|---:|---:|---:|
-| 0 | 1163 | 1209 | +4% |
-| 16k | 377 | 504 | +34% |
-| 32k | 205 | 322 | +57% |
-| 64k | 71.9 | 190 | **2.64x** |
+| 0 | 1163 | 1218 | +5% |
+| 16k | 377 | 505 | +34% |
+| 32k | 205 | 323 | +58% |
+| 64k | 71.9 | 191 | **2.66x** |
 
-(q8 KV reaches **2.66x** at 64k — same win, higher KV quality, and it's the shipping PR's scope. q4 shown
-here since it's the recommended long-context default.)
+(q4 KV lands the same win at **1/4** the KV memory — 190 t/s / 2.64x at 64k — so use q4 for maximum context,
+q8 for maximum KV quality. We reference q8 here: it's the shipping PR's scope and the higher-quality cache.)
 
 ![Qwen3.6-35B-A3B Q4_K_XL, same weights: quant KV vs f16 on prefill and decode, against the best public f16](graphs/02_35b_q4kxl_samequant.png)
 
-**Qwen3.6-35B-A3B (head-dim 256, UD-Q4_K_XL, same weights), at 64k:** quantized KV gives **+9% prefill
-and +18% decode** vs stock f16, at **1/4 the KV memory**. Our stock-f16 decode (42.7 t/s @64k) matches the
-best public f16 numbers (kyuz0, 43.2) on the same model, so the quant-KV win is real, not a baseline artifact.
+**Qwen3.6-35B-A3B (head-dim 256, UD-Q4_K_XL, same weights), at 64k:** q8 KV gives **+9% prefill and +15%
+decode** vs stock f16 at **1/2 the KV memory** (q4 gives +18% decode at 1/4). Our stock-f16 decode (42.7 t/s
+@64k) matches the best public f16 numbers (kyuz0, 43.2) on the same model, so the quant-KV win is real, not a
+baseline artifact.
 
 ![Decode throughput vs depth: quantized KV also generates faster than f16 at depth, both models](graphs/03_decode_both.png)
 
@@ -142,6 +156,11 @@ best public f16 numbers (kyuz0, 43.2) on the same model, so the quant-KV win is 
 with depth (dramatic at head-dim 128, parity-restoring at head-dim 256). The mmid row-list fix adds
 MoE-prefill speedup on top (model-dependent). Decode: quantized KV is both smaller and faster at depth.
 Net guidance: use `-ctk q4_0 -ctv q4_0` for long context.
+
+![Dense model Qwen2.5-7B: q8 KV + fixes vs stock f16, prefill and decode at depth](graphs/04_dense7b_f16_vs_q8.png)
+
+**Dense models too:** the FA dequant-once fix isn't MoE-specific. On dense Qwen2.5-7B (head-dim 128), q8 KV +
+fixes gives **+91% prefill and +22% decode at 64k** vs stock f16 — same mechanism, same win.
 
 Full matrices, raw `llama-bench` output, methodology, and correctness gates are in
 [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md); the per-fix branch inventory and the honest

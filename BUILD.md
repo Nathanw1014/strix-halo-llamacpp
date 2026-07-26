@@ -34,8 +34,10 @@ ninja -C build-rel
 
 ## 3. llama.cpp Vulkan (the fixes)
 
-Check out the combined Strix Halo branch of the fork (dequant-once + all-quant transpose + mmid), then:
+Check out the combined Strix Halo branch **`mmid-fullstack`** of the fork (dequant-once + all-quant
+transpose + the full mmid stack — this is the complete Vulkan stack the toolbox ships), then build:
 ```
+git clone https://github.com/Nathanw1014/llama.cpp && cd llama.cpp && git checkout mmid-fullstack
 cmake -B build-vk -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON -DLLAMA_CURL=OFF \
   -DVulkan_INCLUDE_DIR=<headers-with-vulkan-and-spirv> \
   -DVulkan_GLSLC_EXECUTABLE=<current-glslc>
