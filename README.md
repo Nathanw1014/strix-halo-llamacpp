@@ -58,6 +58,32 @@ docker run --rm --device /dev/kfd --device /dev/dri \
   strix-fa-hip -m /models/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
 ```
 
+### distrobox / toolbox (interactive)
+
+The images carry the `com.github.containers.toolbox=true` label and a toolbox-friendly base, so they
+drop into the same workflow as the other Strix Halo toolboxes. GPU (`/dev/dri`) and your home dir are
+passed through automatically; the binaries are on `PATH` and the wrapper sets the driver + mmid env, so
+they "just work" from the shell.
+
+**distrobox** (podman or docker backend):
+```
+distrobox create --name strix-fa --image <registry>/strix-fa-vulkan
+distrobox enter strix-fa
+# then, inside:
+llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 -ctk q4_0 -ctv q4_0 --host 0.0.0.0
+llama-bench  -m ~/models/MODEL.gguf -ngl 99 -fa 1 -p 512 -n 32 -d 0,32768
+```
+
+**toolbox** (Fedora / immutable distros):
+```
+toolbox create strix-fa --image <registry>/strix-fa-vulkan
+toolbox enter strix-fa
+llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
+```
+
+For the HIP image use `strix-fa-hip` the same way (it still needs `/dev/kfd`, which distrobox/toolbox
+pass through along with `/dev/dri`).
+
 ## Recommended flags
 
 - `-fa 1` always (Flash-Attention on).
