@@ -269,6 +269,37 @@ stands on the same-box pre/post above, not on a public comparison.
 
 kyuz0 numbers: https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/results.json (build b9187, f16 KV, -fa).
 
+### 128k deep context — vs strixhalo.wiki (2026-07-26, iommu-off)
+
+`strixhalo.wiki/AI/llamacpp-performance` publishes a Qwen3-30B-A3B (Q4_K_XL, **f16 KV**) run at `d130560`
+(~128k) — the deepest public gfx1151 point. We ran our Coder-30B-A3B (same 30B-A3B class, hd128; heavier
+Q6_K weights) at the exact same depth:
+
+**Prefill pp512 @ 128k (d130560):**
+
+| build | KV | pp512 | vs our fixed |
+|---|---|---:|---:|
+| wiki RADV | f16 | 17.2 | **6.0x** slower |
+| wiki ROCm | f16 | 40.6 | 2.5x slower |
+| wiki ROCm rocWMMA-tuned | f16 | 51.1 | **2.0x** slower |
+| ours, stock | f16 | 28.4 | our baseline |
+| **ours, + fixes** | **q4 / q8** | **102.8 / 102.5** | — |
+
+**Decode tg @ 128k:** wiki RADV f16 12.5 / ROCm-tuned 13.3 → ours q4 **22.5** (~+70% over their best).
+
+Full 128k curve (this box, iommu-off):
+
+| model | stock f16 pp / tg | q4+fix pp / tg | q8+fix pp / tg |
+|---|---|---|---|
+| Coder-30B-A3B (Q6_K, hd128) | 28.4 / 13.9 | **102.8 / 22.5** | 102.5 / 20.9 |
+| Qwen3.6-35B-A3B (Q5_K, hd256) | 297.7 / 33.1 | 325.3 / 42.0 | 326.2 / 39.9 |
+
+The hd128 prefill gain **grows with depth**: 1.6x @32k → 2.66x @64k → **3.6x @128k** (28.4 → 102.8, same box).
+Even our stock f16 (28.4) tops the wiki's RADV f16 (17.2) — that part is the newer Mesa 26.3 + `amd_iommu=off`;
+the fix is the 3.6x on top. Caveats: wiki weights are Q4_K_XL (lighter than our Q6_K, if anything favoring
+them); deep-context prefill is KV-bound so weight quant matters little here; the 35B (hd256) barely moves (+9%),
+as expected. Raw output: `benchmarks/results/` (Phase-3 `d130560` arms).
+
 ## Caveats / honesty
 
 - Single measurement window per model. pp512 monotonicity and the start/end f16 canary are the
