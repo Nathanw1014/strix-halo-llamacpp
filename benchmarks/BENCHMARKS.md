@@ -198,12 +198,19 @@ Quantized decode beats f16 at depth via RADV's native GQA batching.
 
 The matrix above isolates the in-flight PR (dequant-once) on latest master. This section stacks
 **everything** for maximum throughput: dequant-once + q4 transpose + the mmid MoE-prefill stack
-(`ROWLISTS+SMALLN+BM64+WAVE32`; F16B left OFF because it core-dumps on stock Mesa 26.3), built on
+(`ROWLISTS+SMALLN+BM64+WAVE32`; F16B was left OFF **for these runs** — see note below), built on
 the fix base `5c3a586` and compared against stock `5c3a586`, same glslc / same driver. Start-vs-end
 f16 canary drifted <1% at every point.
 
 Column key: `stock f16` and `stock q4` = plain 5c3a586. `+FA fixes` = dequant-once + q4 transpose,
 mmid off. `CEIL` = + mmid on. `mmid adds` = CEIL vs +FA-fixes (isolates mmid).
+
+> **Note on F16B (updated 2026-07-27).** These runs predate the fix and left `GGML_VK_MMID_F16B`
+> off. The abort was root-caused to a missing `Q2_0` f16-B pipeline — an experimental type that only
+> `test-backend-ops` reaches and no real GGUF uses — not a Mesa 26.3 driver bug. It is fixed, and the
+> shipped `vulkan/_run` wrapper now enables F16B **by default**. So these numbers are a slight
+> *under*-statement of the current build on models where F16B helps (small gain on the 35B, neutral
+> on Coder-30B).
 
 ### Prefill pp512 (t/s) - Qwen3-Coder-30B-A3B (hd128)
 

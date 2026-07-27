@@ -148,6 +148,16 @@ pass through along with `/dev/dri`).
 ## Recommended flags
 
 - `-fa 1` always (Flash-Attention on).
+- **Prefill-heavy work: use `-b 1024 -ub 1024`.** The default ubatch (512) leaves prefill on the
+  table on MoE models. A MoE touches essentially every expert once the ubatch exceeds ~16 tokens, so
+  the whole expert tensor streams regardless of batch size — which means arithmetic intensity rises
+  with ubatch until it reaches this machine's compute/bandwidth balance point (~230 FLOP/byte,
+  reached near ubatch 900). Measured on Coder-30B UD-Q4_K_XL, same build and driver, r=3:
+  `pp2048` **1482 -> 1629 t/s at d0 (+9.9%)** and **337 -> 351 at d32768 (+4.1%)**.
+  ⚠️ Caveat: larger ubatch raises per-batch memory. On a 64 GB box with other GPU work resident
+  (e.g. ComfyUI), an over-large ubatch can lose more to GTT pressure than it gains — `ub2048` has
+  been measured degrading ~2x under co-tenancy. Use `ub1024` when you have headroom; keep `ub512`
+  if the box is shared. Decode is unaffected either way (it is bandwidth-bound, not batch-bound).
 - **Long context: use q4_0 KV** (`-ctk q4_0 -ctv q4_0`). It is the smallest footprint (about 1/4
   of f16) and, with these fixes, the fastest at depth for both prefill and decode. Use `q8_0` if
   you want a little more KV quality; use `f16` only for short prompts where it does not matter.
