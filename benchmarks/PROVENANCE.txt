@@ -17,3 +17,13 @@ ub2048_*    : llama-bench -ngl 99 -fa 1 -b 2048 -ub 2048 -p 2048 -n 0 -d 0,8192,
 ub2048_rocm_*: same ub2048 protocol, reference backend = upstream llama.cpp 571d0d5 HIP build,
   GGML_HIP_ROCWMMA_FATTN=OFF, ROCm 7.2.4 (docker tile-build-env), gfx1151.
 Services stopped for all arms; GTT ~17 MiB idle before each block; f16 KV files have no -ctk/-ctv column.
+
+--- Capture 2026-07-28 (contig_qwen35b_*, prepr_*, ub2048_prepr_*) ---
+Same box / driver; ALL builds compiled with the canonical glslc (shaderc v2026.3-dev) -
+an earlier baseline attempt with Ubuntu's packaged glslc 2023.8 produced invalid deep-context
+numbers (and "int dot: 0" at init) and was discarded.
+contig_qwen35b_* : Qwen3.6-35B-A3B UD-Q5_K_XL on build 74434c3, standard pp512 protocol.
+prepr_*          : stock upstream master 8161641 (2026-07-28), no fixes, standard protocol.
+ub2048_prepr_*   : same stock master, ub2048 protocol (graph 05 baseline).
+The last ~11s of the ub2048_prepr d65536 arm overlapped another process's model load;
+r=3 spread stayed at +/-0.07 t/s, so the point stands.

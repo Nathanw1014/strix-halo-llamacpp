@@ -49,6 +49,12 @@ comparable to a current toolchain. All arms here use the same v2026.3-dev glslc.
 llama-bench -ngl 99 -fa 1 -b 512 -ub 512 -p 512 -n 32 -d 0,4096,16384,32768,65536 -r 3 -o md
 ```
 
+The `ub2048_*` results (production-config section below) use a second protocol:
+
+```
+llama-bench -ngl 99 -fa 1 -b 2048 -ub 2048 -p 2048 -n 0 -d 0,8192,16384,32768,65536 -r 3 -o md
+```
+
 - GPU services (llama-swap, ComfyUI) stopped for the whole run; ~60 GiB free.
 - q8: `-ctk q8_0 -ctv q8_0`; q4: `-ctk q4_0 -ctv q4_0`; f16: default.
 - pre/post arms interleaved adjacently per quant type, 20 s settle between arms, plus a
@@ -112,6 +118,39 @@ dequant-once (the `q4 dequant-once` column below) and it feeds the max-performan
 
 - Correctness on the latest stack (this repo's build): FLASH_ATTN passes for
   **f16, q8_0, q4_0, q4_1, q5_0, q5_1**; **iq4_nl is broken** (ERR=inf) and is unused/excluded.
+
+### 4. Vulkan: contiguize strided f16 KV before FA (GGML_VK_FA_KV_CONTIG) - prefill at depth
+
+**What it does.** The KV cache stores all heads interleaved per token, so the K/V view
+reaching Flash-Attention has each head's rows strided (256B useful out of every 1KB on
+Coder-30B). The coopmat1 kernel loads K/V tiles straight from global memory, and on that
+stride a 16x16 tile touches 16 cache lines instead of 4: the same FA op measures 29.8ms
+contiguous vs 63.1ms on the cache layout. Quantized KV never hit this because the
+dequant-once scratch (fix 1) already writes per-head-contiguous f16 as a side effect; f16 KV
+skipped that path and was the only format still paying the strided loads. This fix routes
+strided f16 K/V through the same scratch via a pure copy shader (no dequant), engaged only
+for prefill (`neq1 >= 64`) and only when the rows are actually strided. Decode is untouched.
+
+- Scope: **f16 KV, prefill only**; **on by default** since `3957182` (`GGML_VK_FA_KV_CONTIG=0` opts out).
+- Branch: `Nathanw1014/llama.cpp` `strix-halo-vulkan`, commits `442d7df` (fix) + `74434c3` (tests) + `3957182` (default-on).
+  Upstream-prep: `vulkan-fa-f16-kv-contig` (env-free, stacked on the #25494 branch since it extends that scratch infra).
+- Status: **public branch, testable now**; upstream PR queued behind #25494.
+- Evidence: `results/contig_coder30b_*` vs `results/post_coder30b_f16` (section below).
+- Headline: f16 pp512 @ d65536 goes **70.6 -> 190.0 t/s (2.69x)**; tg32 unchanged at every depth.
+
+### 5. Vulkan: route non-native FA K/V types through the dequant-once path (iq4_nl correctness)
+
+**What it does.** iq4_nl has no native FA shader on the scalar/coopmat1 paths; outside the
+dequant-once path the shader silently reads garbage, which is how the iq4_nl+sinks
+FLASH_ATTN_EXT failures (ERR=inf, excluded from the correctness gate above) escaped.
+`ggml_vk_fa_kv_native()` becomes the single source of truth for native K/V types; non-native
+types are forced through the dequant-once path and supports_op mirrors every hard gate so
+admission and dispatch always agree.
+
+- Scope: correctness only, no perf claims; commit `1abdd92` on `strix-halo-vulkan`.
+- Status: fix landed on the branch; test cases land with the ongoing iq4_nl investigation.
+- Caveat: upstream master `8161641` ("vulkan: add iq4_nl support back to FA", #24585, 2026-07-28)
+  touches the same area and must be reconciled before any upstream submission.
 
 ## Correctness gate (this stack)
 
@@ -245,6 +284,85 @@ on Coder-30B (+4% shallow, +0% deep): Coder-30B's 128-expert/top-8 routing alrea
 natively (mean per-expert n ~= 32 = the tile width), so there is little redundant expert-scan to remove;
 the 35B carries the tile-occupancy waste that mmid's row-list prepass eliminates. On Coder-30B the deep
 prefill win is essentially all dequant-once (stock f16 70 -> all-fixes q4 185 = 2.66x at 64k).
+
+## f16 catches up: the KV-CONTIG fix (2026-07-28, build 74434c3)
+
+The tables above told a "use quant KV to rescue deep prefill" story: stock f16 collapsed to
+70 t/s at 64k while q4/q8 held 185. Fix 4 removes the collapse at its source, so f16 no
+longer needs rescuing. Same protocol, same driver as the ceiling runs; raw dumps in
+`results/contig_coder30b_*`.
+
+### Prefill pp512 (t/s) - Qwen3-Coder-30B-A3B, f16 KV
+
+| depth | published f16 (post) | 74434c3 f16 (contig) | change | contig q8 | contig q4 |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 1128.18 | 1219.24 | +8% | 1214.73 | 1203.19 |
+| 4096 | 807.28 | 919.89 | +14% | 898.68 | 895.91 |
+| 16384 | 370.73 | 511.42 | +38% | 505.66 | 503.39 |
+| 32768 | 198.98 | 325.88 | +64% | 322.63 | 322.32 |
+| 65536 | 70.64 | 190.03 | **+169% (2.69x)** | 191.28 | 189.87 |
+
+All three KV types now land within 1% of each other at every depth: **KV quantization is no
+longer a prefill-speed decision on this stack**, only a memory / decode-bandwidth one. Decode
+is untouched by design: tg32 deltas vs the published tables are within +/-2% at every depth
+and KV type (`contig_*` files include the tg32 rows). The small q8/q4 prefill gains over the
+published CEIL numbers (+2 to +5%) are build drift from the
+base rebase and mmid flag defaults, not this fix (per-flag decomposition to follow).
+
+### Prefill pp512 (t/s) - Qwen3.6-35B-A3B (hd256), vs pre-PR master
+
+Same protocol on the 35B. Baseline = stock upstream master `8161641` (2026-07-28), canonical
+glslc, freshly measured (`results/prepr_qwen35b_f16.md`); "this stack" = build 74434c3
+(`results/` has all three KV arms). hd256 f16 never collapsed the way hd128 did, so the win
+here is broad rather than dramatic - and it holds without quantizing the KV.
+
+| depth | pre-PR master f16 | this stack f16 | change | this stack q8 | this stack q4 |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 1053.14 | 1224.67 | +16% | 1265.19 | 1264.91 |
+| 4096 | 951.41 | 1122.18 | +18% | 1140.45 | 1143.54 |
+| 16384 | 800.94 | 920.90 | +15% | 916.18 | 921.93 |
+| 32768 | 658.11 | 731.61 | +11% | 737.19 | 736.71 |
+| 65536 | 474.22 | 523.79 | +11% | 521.39 | 520.66 |
+
+Decode is flat vs master on f16 (+/-1.5% at every depth); quantized KV keeps its established
+decode advantage at depth (tg32 @ d65536: f16 41.5, q8 47.5, q4 48.9 - the KV-bandwidth
+effect, unrelated to this fix). Coder-30B vs the same fresh master baseline
+(`results/prepr_coder30b_f16.md`): stock still collapses to 72.2 pp512 @ d65536, so the fix's
+headline stands at **2.63x vs current master** (190.0 vs 72.2).
+
+## Production config: ub2048 (recommended on Strix)
+
+Everything above uses the ub512 protocol for comparability with the public corpus. But the
+physical batch default (`-ub 512`) leaves real prefill on the table on Strix with MoE models:
+at ub512 each of Coder-30B's 128 experts sees only ~32 rows per ubatch, and the expert GEMMs
+are dominated by streaming weights in. At ub2048 each expert gets ~128 rows and the same
+weight traffic feeds 4x the work. Cost is ~1.6 GiB of extra GTT for the larger compute
+buffers, which a 64 GiB+ Strix box does not notice.
+
+**Recommendation: run `-b 2048 -ub 2048` on Strix Halo for MoE models** (it is the config the
+maintainer's own server runs). Keep 512 only if you serve many concurrent streams and care
+about decode latency spikes during long prefill chunks: the ubatch is the scheduling quantum,
+so a 2048-token chunk holds the GPU ~4x longer between decode turns. Prompts shorter than the
+ubatch are one chunk either way and see no difference.
+
+![Production config -ub 2048: prefill vs depth for f16/q8/q4 KV, all three overlapping, with ROCm reference](../graphs/05_coder30b_ub2048_kvtypes.png)
+
+### Prefill pp2048 @ ub2048 (t/s) - Qwen3-Coder-30B-A3B, build 74434c3
+
+| depth | f16 | q8_0 | q4_0 | ROCm reference (f16) |
+|---:|---:|---:|---:|---:|
+| 0 | 1630.88 | 1589.03 | 1585.78 | 1475.41 |
+| 8192 | 849.26 | 829.23 | 838.18 | 953.78 |
+| 16384 | 578.99 | 570.37 | 570.44 | 677.83 |
+| 32768 | 354.02 | 349.95 | 349.09 | 412.87 |
+| 65536 | 198.80 | 196.28 | 196.48 | 225.99 |
+
+d0 prefill gains +34% over the same build at ub512 (1631 vs 1219). The ROCm column is a
+reference point, not a toolbox build: upstream llama.cpp `571d0d5`, HIP, rocWMMA off, ROCm
+7.2.4 (see PROVENANCE; `results/ub2048_rocm_coder30b_*`, q8/q4 files there too - ROCm prefill
+is KV-type-insensitive like ours). Vulkan leads at d0 by ~11%; ROCm leads at depth by 12-17%
+(a coopmat1 kernel-structure residual, under investigation). rocWMMA-ON HIP builds are far
+slower at depth than rocWMMA-off and should not be used as the comparison point.
 
 ## vs public data
 
