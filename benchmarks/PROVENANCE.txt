@@ -37,7 +37,7 @@ drift_coder30b_q8_*     : pp512 protocol d0/4k/16k, q8 KV, mmid flag ablations (
 hd256 stride probe ran under test-backend-ops perf (GGML_VK_FA_KV_CONTIG=0), not a results file;
 numbers quoted in BENCHMARKS.md "hd256 stride-tax probe".
 
---- Capture 2026-07-29 早 (scachefix_*) ---
+--- Capture 2026-07-28 late (scachefix_*) ---
 Build 146fb73 = 74434c3 + 0b97626 (probe tests) + 146fb73 (mmid q5_K/q4_K scale cache DISABLED:
 it measured -4% pp512@ub512 and -20% pp2048@ub2048 on Q5_K-weight MoE vs cache-off; the deficit
 vs stock master previously in the ub2048 table was this, not base drift - stock at the stack's
