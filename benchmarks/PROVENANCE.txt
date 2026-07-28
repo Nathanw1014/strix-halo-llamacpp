@@ -7,3 +7,13 @@ llama POST : d808751 = fb92d8f + PR#25494 (b1500a6,3596a78,c72935a,2adcfdc,3729f
 Protocol   : llama-bench -ngl 99 -fa 1 -b 512 -ub 512 -p 512 -n 32 -d 0,4096,16384,32768,65536 -r 3
 Services stopped, ~60 GiB free, GTT 18.6 MB stable every arm, 20s inter-arm settle, start/end f16 canary.
 Correctness: FLASH_ATTN_EXT pass for f16/q8_0/q4_0/q4_1/q5_0/q5_1; iq4_nl broken (excluded).
+
+--- Capture 2026-07-28 (contig_*, ub2048_*) ---
+Same box / driver as above: Mesa 26.3.0-devel (git-d18d598e), RADV, local build, amd_iommu=off.
+llama build : 74434c3 (strix-halo-vulkan) = f69e4ea + 442d7df (GGML_VK_FA_KV_CONTIG f16 contiguize) + 74434c3 (tests)
+Env (all Vulkan arms): GGML_VK_MMID_ROWLISTS/SMALLN/BM64/WAVE32/F16B/M128=1, GGML_VK_FA_KV_CONTIG=1
+contig_*    : llama-bench -ngl 99 -fa 1 -b 512 -ub 512 -p 512 -n 32 -d 0,4096,16384,32768,65536 -r 3 (same protocol as above)
+ub2048_*    : llama-bench -ngl 99 -fa 1 -b 2048 -ub 2048 -p 2048 -n 0 -d 0,8192,16384,32768,65536 -r 3 (production config)
+ub2048_rocm_*: same ub2048 protocol, reference backend = upstream llama.cpp 571d0d5 HIP build,
+  GGML_HIP_ROCWMMA_FATTN=OFF, ROCm 7.2.4 (docker tile-build-env), gfx1151.
+Services stopped for all arms; GTT ~17 MiB idle before each block; f16 KV files have no -ctk/-ctv column.
