@@ -20,7 +20,7 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 
 | Branch | Contents | Use |
 |---|---|---|
-| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `442d7df`/`3957182`) + non-native K/V type routing (`1abdd92`) + scale-cache disable (`146fb73`, the scache had regressed), rebased on upstream **`ff067f7`** (2026-07-26) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `442d7df`/`3957182`) + non-native K/V type routing (`1abdd92`) + scale-cache disable (`146fb73`, the scache had regressed), rebased on upstream **`8161641`** (2026-07-28 master; previous ff067f7-based tip archived as `strix-halo-vulkan-ff067f7`) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
 | `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
 | `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 
