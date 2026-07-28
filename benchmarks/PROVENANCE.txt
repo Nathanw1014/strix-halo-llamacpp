@@ -27,3 +27,12 @@ prepr_*          : stock upstream master 8161641 (2026-07-28), no fixes, standar
 ub2048_prepr_*   : same stock master, ub2048 protocol (graph 05 baseline).
 The last ~11s of the ub2048_prepr d65536 arm overlapped another process's model load;
 r=3 spread stayed at +/-0.07 t/s, so the point stands.
+
+--- Capture 2026-07-28 evening (ub2048_*_qwen35b, iso_*, drift_*) ---
+Same box / toolchain (canonical glslc throughout).
+ub2048_contig_qwen35b_* : 35B on build 74434c3, ub2048 protocol WITH -n 32 (tg32 rows).
+ub2048_prepr_qwen35b_f16: stock master 8161641, same protocol.
+iso_ub512_pp2048_*      : -b 512 -ub 512 -p 2048 -n 0 -d 0 -r 3 (pure-ubatch isolation, build 74434c3).
+drift_coder30b_q8_*     : pp512 protocol d0/4k/16k, q8 KV, mmid flag ablations (M128 off; M128+F16B off).
+hd256 stride probe ran under test-backend-ops perf (GGML_VK_FA_KV_CONTIG=0), not a results file;
+numbers quoted in BENCHMARKS.md "hd256 stride-tax probe".

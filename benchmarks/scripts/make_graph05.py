@@ -51,7 +51,7 @@ ax.annotate(f"{r:.2f}x vs stock\nat 64k",(65536,f16[65536]),xytext=(-86,30),text
     arrowprops=dict(arrowstyle="->",color=FIX,lw=1.4))
 
 # headline at d0 and the convergence note at depth
-ax.annotate("1631 t/s at d0\n(+34% vs ub512)",(0,f16[0]),xytext=(26,-34),textcoords="offset points",
+ax.annotate("1631 t/s at d0\n(+39% vs ub512, same prompt)",(0,f16[0]),xytext=(26,-34),textcoords="offset points",
     color=F16,fontweight="bold",fontsize=12.5,
     arrowprops=dict(arrowstyle="->",color=F16,lw=1.4))
 ax.annotate("all three KV types\nwithin 1% at every depth",(16384,q4[16384]),xytext=(40,36),

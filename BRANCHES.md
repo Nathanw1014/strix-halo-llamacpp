@@ -14,12 +14,13 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 | `vulkan-coopmat1-fa-dequant-transpose` | dequantize q8_0 KV once in the coopmat1 FA kernel (prefill) | Vulkan | in-flight PR #25494 |
 | `vulkan-mmid-rowlists` | mmid row-list prepass: removes the redundant per-workgroup expert-ID scan in `MUL_MAT_ID` | Vulkan | upstream candidate (clean cherry-pick onto master, MUL_MAT_ID 2/2) |
 | `fa-tile-dequant-on-load` | dequantize KV on load in the tile FA kernel, route quantized decode there (decode) | HIP / CUDA | public branch, testable now; upstream PR not yet opened |
+| `vulkan-fa-f16-kv-contig` | contiguize strided f16 KV before FA (the f16 counterpart of the dequant-once transpose; 2.63x pp @ 64k vs stock master) | Vulkan | stacked on the #25494 branch (extends its scratch infra); PR queued behind #25494 |
 
 ## Combined / max-performance branches
 
 | Branch | Contents | Use |
 |---|---|---|
-| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + scache + F16B fix, rebased on upstream **`b10133`** | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate (only iq4_nl fails, known), Coder-30B q8 @64k 2.64x |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + scache + F16B fix + f16 KV contiguize (on by default, `442d7df`/`3957182`) + non-native K/V type routing (`1abdd92`), rebased on upstream **`b10133`** | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
 | `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
 | `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 

@@ -20,6 +20,10 @@ config-tweaks).
 
 ![Decode throughput vs depth: quantized KV also generates faster than f16 at depth, both models](../graphs/03_decode_both.png)
 
+![Dense Qwen2.5-7B: the FA dequant-once fix is not MoE-specific](../graphs/04_dense7b_f16_vs_q8.png)
+
+![Production config -ub 2048: KV type no longer affects prefill; 5.77x vs stock master at 64k](../graphs/05_coder30b_ub2048_kvtypes.png)
+
 ## The machine
 
 - Framework Desktop, Ryzen AI Max+ 395 (Strix Halo), Radeon 8060S iGPU (gfx1151 / RDNA3.5)
@@ -339,11 +343,17 @@ are dominated by streaming weights in. At ub2048 each expert gets ~128 rows and 
 weight traffic feeds 4x the work. Cost is ~1.6 GiB of extra GTT for the larger compute
 buffers, which a 64 GiB+ Strix box does not notice.
 
-**Recommendation: run `-b 2048 -ub 2048` on Strix Halo for MoE models** (it is the config the
-maintainer's own server runs). Keep 512 only if you serve many concurrent streams and care
-about decode latency spikes during long prefill chunks: the ubatch is the scheduling quantum,
-so a 2048-token chunk holds the GPU ~4x longer between decode turns. Prompts shorter than the
-ubatch are one chunk either way and see no difference.
+**Recommendation: run `-b 2048 -ub 2048` on Strix Halo for Coder-30B-class MoE models**
+(hd128, small-expert A3B; it is the config the maintainer's own server runs). Isolated at the
+same prompt length, ubatch 2048 alone is worth **+39%** on Coder-30B (pp2048 d0: 1170 @ ub512
+-> 1631 @ ub2048; `results/iso_ub512_pp2048_coder30b_f16.md`). It is NOT universal: on the
+35B the same isolation measures **-12%** at d0 (1180 -> 1035), so leave the 35B at the
+default shallow and prefer ub2048 only for deep-context work there (at d65536 it wins:
+537 vs 297 stock). Keep 512 also if you serve many concurrent streams and care about decode
+latency spikes during long prefill chunks: the ubatch is the scheduling quantum. Decode is
+unaffected by ubatch either way (tg32 58.3 @ ub2048 vs 57.3 @ ub512, same build - measured,
+`results/ub2048_contig_qwen35b_f16.md`). Prompts shorter than the ubatch are one chunk
+either way and see no difference.
 
 ![Production config -ub 2048: prefill vs depth for f16/q8/q4 KV, all three overlapping, with ROCm reference](../graphs/05_coder30b_ub2048_kvtypes.png)
 
@@ -357,12 +367,45 @@ ubatch are one chunk either way and see no difference.
 | 32768 | 354.02 | 349.95 | 349.09 | 412.87 |
 | 65536 | 198.80 | 196.28 | 196.48 | 225.99 |
 
-d0 prefill gains +34% over the same build at ub512 (1631 vs 1219). The ROCm column is a
+d0 prefill gains +39% over the same build and prompt at ub512 (1631 vs 1170). The ROCm column is a
 reference point, not a toolbox build: upstream llama.cpp `571d0d5`, HIP, rocWMMA off, ROCm
 7.2.4 (see PROVENANCE; `results/ub2048_rocm_coder30b_*`, q8/q4 files there too - ROCm prefill
 is KV-type-insensitive like ours). Vulkan leads at d0 by ~11%; ROCm leads at depth by 12-17%
 (a coopmat1 kernel-structure residual, under investigation). rocWMMA-ON HIP builds are far
 slower at depth than rocWMMA-off and should not be used as the comparison point.
+
+### Prefill pp2048 @ ub2048 - Qwen3.6-35B-A3B (and where the stack needs a rebase)
+
+| depth | this stack f16 | this stack q8 | stock master f16 | f16 vs stock |
+|---:|---:|---:|---:|---:|
+| 0 | 1034.9 | 1009.7 | **1140.7** | 0.91x |
+| 8192 | 895.7 | 908.2 | **979.3** | 0.91x |
+| 16384 | 793.3 | 794.8 | **857.0** | 0.93x |
+| 32768 | **655.5** | 728.2 | 595.8 | 1.10x |
+| 65536 | **537.5** | 482.2 | 297.0 | **1.81x** |
+
+Read the 0.91x rows plainly: at ub2048 on the 35B, current stock master out-runs this stack
+at shallow depth. The stack's base is `b10133` (~10 days behind master at capture time) and
+upstream has landed real Vulkan work since; at ub512 the stack still leads master at every
+depth on this model, and at ub2048 it leads from 32k down (1.81x at 64k). The fix stack and a
+current base are complementary, not competing: a rebase onto current master is the pending
+work item. tg32 is identical between the two at every depth. Raw:
+`results/ub2048_contig_qwen35b_*`, `results/ub2048_prepr_qwen35b_f16.md`.
+
+### Drift note: where the +2-5% over the published q8/q4 tables comes from
+
+Measured decomposition (Coder-30B q8, pp512 d0; `results/drift_coder30b_q8_*`): upstream base
+refresh `5c3a586` -> `b10133` = **+3.2%**, F16B-on-by-default = **+1.2%**, M128 = **+0.3%**.
+The same base-staleness effect, larger, is what the 35B ub2048 table above shows against
+today's master.
+
+### hd256 stride-tax probe
+
+The op-level strided-load tax is NOT hd128-specific: at 35B-class geometry (hd256, 4 KV
+heads, kv=10240, nb=2048) the FA op measures 68.3 ms contiguous vs 152.7 ms on the cache
+layout (2.24x; hd128 measures 2.1x). The model-level difference between Coder-30B (2.63x
+end-to-end) and the 35B (+11% at depth) is FA's share of the graph - 72.6% at depth on the
+tiny-FFN A3B Coder vs far less on the 35B - not kernel immunity at hd256.
 
 ## vs public data
 
