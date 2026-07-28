@@ -5,7 +5,7 @@ tuned for **long-context, quantized-KV** workloads. It bundles a set of Flash-At
 MoE-prefill fixes plus a current GPU driver, so quantized KV cache is fast instead of a penalty.
 
 The measurements behind these fixes (matrices, methodology, raw data) live in the companion
-evidence pack.
+[evidence pack](benchmarks/BENCHMARKS.md).
 
 ## Speedups at a glance
 
@@ -225,16 +225,6 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   here (off vs on, same build): ~+3–5% prefill (larger on the 35B MoE than on Coder-30B), roughly neutral
   decode** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
   taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
-
-## Publishing (maintainers)
-
-- **Images → ghcr.io** (needs your GitHub auth; `gh auth login` first):
-  `gh auth token | docker login ghcr.io -u nathanw1014 --password-stdin`, then `./push-images.sh`
-  (or `./push-images.sh vulkan` for just the 273 MB Vulkan image — the HIP image is ~29 GB because it
-  bundles the full ROCm runtime).
-- **Portable tarball → GitHub Release**:
-  `tar czf strix-halo-llamacpp-vulkan-portable.tar.gz vulkan README.md`, then
-  `gh release create v0.1 strix-halo-llamacpp-vulkan-portable.tar.gz`.
 
 ## Notes and caveats
 
