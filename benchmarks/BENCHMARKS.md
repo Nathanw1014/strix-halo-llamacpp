@@ -322,11 +322,15 @@ here is broad rather than dramatic - and it holds without quantizing the KV.
 
 | depth | pre-PR master f16 | this stack f16 | change | this stack q8 | this stack q4 |
 |---:|---:|---:|---:|---:|---:|
-| 0 | 1053.14 | 1224.67 | +16% | 1265.19 | 1264.91 |
-| 4096 | 951.41 | 1122.18 | +18% | 1140.45 | 1143.54 |
-| 16384 | 800.94 | 920.90 | +15% | 916.18 | 921.93 |
-| 32768 | 658.11 | 731.61 | +11% | 737.19 | 736.71 |
-| 65536 | 474.22 | 523.79 | +11% | 521.39 | 520.66 |
+| 0 | 1053.14 | 1271.48 | +21% | 1274.12 | 1272.86 |
+| 4096 | 951.41 | 1141.86 | +20% | 1147.80 | 1153.24 |
+| 16384 | 800.94 | 923.34 | +15% | 927.52 | 927.42 |
+| 32768 | 658.11 | 737.65 | +12% | 730.28 | 742.09 |
+| 65536 | 474.22 | 525.50 | +11% | 524.44 | 528.26 |
+
+These are the `scachefix_qwen35b_*` files (build `146fb73`, which disables a scale cache that
+had regressed on this model - see the scache note below). The earlier capture on `74434c3`
+(`contig_qwen35b_*`) is kept for the before/after.
 
 Decode is flat vs master on f16 (+/-1.5% at every depth); quantized KV keeps its established
 decode advantage at depth (tg32 @ d65536: f16 41.5, q8 47.5, q4 48.9 - the KV-bandwidth
@@ -374,23 +378,26 @@ is KV-type-insensitive like ours). Vulkan leads at d0 by ~11%; ROCm leads at dep
 (a coopmat1 kernel-structure residual, under investigation). rocWMMA-ON HIP builds are far
 slower at depth than rocWMMA-off and should not be used as the comparison point.
 
-### Prefill pp2048 @ ub2048 - Qwen3.6-35B-A3B (and where the stack needs a rebase)
+### Prefill pp2048 @ ub2048 - Qwen3.6-35B-A3B (and the scale-cache regression)
 
 | depth | this stack f16 | this stack q8 | stock master f16 | f16 vs stock |
 |---:|---:|---:|---:|---:|
-| 0 | 1034.9 | 1009.7 | **1140.7** | 0.91x |
-| 8192 | 895.7 | 908.2 | **979.3** | 0.91x |
-| 16384 | 793.3 | 794.8 | **857.0** | 0.93x |
-| 32768 | **655.5** | 728.2 | 595.8 | 1.10x |
-| 65536 | **537.5** | 482.2 | 297.0 | **1.81x** |
+| 0 | **1296.5** | 1288.9 | 1140.7 | 1.14x |
+| 8192 | **993.9** | 1095.8 | 979.3 | 1.01x |
+| 16384 | **945.3** | 958.5 | 857.0 | 1.10x |
+| 32768 | **766.5** | 764.4 | 595.8 | 1.29x |
+| 65536 | **541.1** | 539.3 | 297.0 | **1.82x** |
 
-Read the 0.91x rows plainly: at ub2048 on the 35B, current stock master out-runs this stack
-at shallow depth. The stack's base is `b10133` (~10 days behind master at capture time) and
-upstream has landed real Vulkan work since; at ub512 the stack still leads master at every
-depth on this model, and at ub2048 it leads from 32k down (1.81x at 64k). The fix stack and a
-current base are complementary, not competing: a rebase onto current master is the pending
-work item. tg32 is identical between the two at every depth. Raw:
-`results/ub2048_contig_qwen35b_*`, `results/ub2048_prepr_qwen35b_f16.md`.
+An earlier capture on build `74434c3` (`ub2048_contig_qwen35b_*`, kept in results/) showed
+stock master AHEAD 0.91x at shallow depth here. That deficit was initially suspected to be
+base drift and turned out to be a regression in this stack: the mmid q5_K scale cache
+(added 2026-07-14 as a win) had been obsoleted by later tile changes and measured -20% on
+this model at ub2048 and -4% at the standard protocol. Build `146fb73` disables it (base
+drift was exonerated by measurement: stock at the stack's own base `ff067f7` benches
+identical to current master on this shape). With that fix the stack leads stock master on
+the 35B at every depth and both protocols. tg32 unchanged throughout, and measured
+ubatch-invariant (58.0 @ ub2048 vs 57.9 @ ub512). Raw: `results/ub2048_scachefix_qwen35b_*`,
+`results/ub2048_prepr_qwen35b_f16.md`.
 
 ### Drift note: where the +2-5% over the published q8/q4 tables comes from
 

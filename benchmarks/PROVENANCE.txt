@@ -36,3 +36,13 @@ iso_ub512_pp2048_*      : -b 512 -ub 512 -p 2048 -n 0 -d 0 -r 3 (pure-ubatch iso
 drift_coder30b_q8_*     : pp512 protocol d0/4k/16k, q8 KV, mmid flag ablations (M128 off; M128+F16B off).
 hd256 stride probe ran under test-backend-ops perf (GGML_VK_FA_KV_CONTIG=0), not a results file;
 numbers quoted in BENCHMARKS.md "hd256 stride-tax probe".
+
+--- Capture 2026-07-29 早 (scachefix_*) ---
+Build 146fb73 = 74434c3 + 0b97626 (probe tests) + 146fb73 (mmid q5_K/q4_K scale cache DISABLED:
+it measured -4% pp512@ub512 and -20% pp2048@ub2048 on Q5_K-weight MoE vs cache-off; the deficit
+vs stock master previously in the ub2048 table was this, not base drift - stock at the stack's
+own base ff067f7 benches identical to master 8161641 on that shape).
+scachefix_qwen35b_*        : standard pp512 protocol, f16/q8/q4.
+ub2048_scachefix_qwen35b_* : ub2048 protocol WITH -n 32, f16/q8.
+Same box, driver, canonical glslc as above. Note the stack base is ff067f7 (2026-07-26); the
+"b10133" reference in earlier notes was a stale label from a previous rebase.
