@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
-# Self-contained launcher: bundled Mesa RADV + libdrm. Max-perf mmid flags on by default,
-# including F16B (safe; small win on some MoEs, neutral elsewhere). Disable any with e.g. GGML_VK_MMID_F16B=0.
+# Self-contained launcher: bundled Mesa RADV + libdrm, with the max-perf flag set on by default.
+#
+# These are the same seven env vars the published benchmarks were measured with. Each is
+# opt-out: set it to 0 before running to disable, e.g. GGML_VK_MMID_F16B=0 llama-server ...
+#   GGML_VK_MMID_ROWLISTS  MoE row-list prepass (the real mmid fix)
+#   GGML_VK_MMID_SMALLN    tile-occupancy fix at small per-expert n
+#   GGML_VK_MMID_BM64      64-row expert tile
+#   GGML_VK_MMID_WAVE32    wave32 for the mmid GEMM
+#   GGML_VK_MMID_F16B      f16 B-operand path
+#   GGML_VK_MMID_M128      128-row tile at the n~64 the ub2048 heuristic picks
+#   GGML_VK_FA_WAVE32      head-size-gated wave32 pin for flash-attention
+# GGML_VK_FA_KV_CONTIG (f16 KV contiguize) is on by default in the build; set it to 0 to opt out.
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 export VK_ICD_FILENAMES="$HERE/driver/radeon_icd.x86_64.json"
 export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
 export LD_LIBRARY_PATH="$HERE/driver:$HERE/bin${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-: "${GGML_VK_MMID_ROWLISTS:=1}" "${GGML_VK_MMID_SMALLN:=1}" "${GGML_VK_MMID_BM64:=1}" "${GGML_VK_MMID_WAVE32:=1}" "${GGML_VK_MMID_F16B:=1}"
-export GGML_VK_MMID_ROWLISTS GGML_VK_MMID_SMALLN GGML_VK_MMID_BM64 GGML_VK_MMID_WAVE32 GGML_VK_MMID_F16B
+: "${GGML_VK_MMID_ROWLISTS:=1}" "${GGML_VK_MMID_SMALLN:=1}" "${GGML_VK_MMID_BM64:=1}" "${GGML_VK_MMID_WAVE32:=1}" "${GGML_VK_MMID_F16B:=1}" "${GGML_VK_MMID_M128:=1}" "${GGML_VK_FA_WAVE32:=1}"
+export GGML_VK_MMID_ROWLISTS GGML_VK_MMID_SMALLN GGML_VK_MMID_BM64 GGML_VK_MMID_WAVE32 GGML_VK_MMID_F16B GGML_VK_MMID_M128 GGML_VK_FA_WAVE32
 exec "$HERE/bin/$(basename "$0")" "$@"

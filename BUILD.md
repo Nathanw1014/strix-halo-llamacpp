@@ -13,13 +13,21 @@ toolbox once you have these three (four with HIP) build outputs. This file docum
 
 ## 1. libdrm (recent)
 
-Mesa main needs libdrm >= 2.4.133. Build it to a local prefix:
+Mesa main needs libdrm >= 2.4.133. Build it with `--prefix=/usr` and stage the install elsewhere
+with `DESTDIR`:
 ```
-# from the libdrm-2.4.133 source (dri.freedesktop.org or the mesa libdrm.wrap)
-meson setup _build --prefix=$PWD/install --libdir=lib -Dbuildtype=release -Damdgpu=enabled -Dradeon=enabled
-ninja -C _build install
-# -> LIBDRM_DIR = $PWD/install/lib
+# from the libdrm source (dri.freedesktop.org or the mesa libdrm.wrap)
+meson setup _build --prefix=/usr --libdir=lib -Dbuildtype=release -Damdgpu=enabled -Dradeon=enabled
+ninja -C _build
+DESTDIR=$PWD/stage ninja -C _build install
+# -> LIBDRM_DIR = $PWD/stage/usr/lib
 ```
+**Use `--prefix=/usr`, not a local prefix.** libdrm compiles the path to `amdgpu.ids` (the GPU
+marketing-name table) in at build time and looks it up at exactly that absolute path. A local
+prefix bakes in a build-machine path that will not exist on a user's box, so every run prints
+`.../amdgpu.ids: No such file or directory` and the device name comes back unqualified.
+`/usr/share/libdrm/amdgpu.ids` is where distro `libdrm-common` puts it, so it resolves on the
+host; the Vulkan container installs `libdrm-common` for the same reason.
 
 ## 2. Mesa RADV (compute-only)
 
@@ -56,6 +64,14 @@ targeting gfx1151:
 cmake --build build-hip --target llama-server llama-cli llama-bench -j
 # -> HIP_BUILD = build-hip
 ```
+
+> **The ICD manifest needs `api_version`.** `build-from-source.sh` writes
+> `vulkan/driver/radeon_icd.x86_64.json` with a relative `library_path` and copies `api_version`
+> out of Mesa's own generated manifest. Omitting that field makes the Vulkan loader log
+> `does not have an 'api_version' field. Skipping ICD JSON` followed by `Found no drivers!`, at
+> which point llama.cpp silently falls back to the **CPU** backend — it still runs, just ~7x
+> slower, with `backend` reading `CPU` in `llama-bench` output. The script now fails loudly
+> rather than emit a manifest the loader will skip.
 
 ## 5. Assemble + package
 

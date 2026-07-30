@@ -3,8 +3,11 @@ LABEL com.github.containers.toolbox="true" \
       org.opencontainers.image.title="strix-halo-llamacpp-vulkan" \
       org.opencontainers.image.description="llama.cpp Vulkan/RADV for Strix Halo (gfx1151), FA + MoE-prefill fixes, bundled Mesa 26.3"
 # runtime deps for the bundled RADV, plus a distrobox/toolbox-friendly base so `enter` works offline
+# libdrm-common supplies /usr/share/libdrm/amdgpu.ids, the GPU marketing-name table the
+# bundled libdrm looks up at that exact path. Without it every run prints
+# "amdgpu.ids: No such file or directory" and the device name is reported unqualified.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libvulkan1 libgomp1 libelf1 libexpat1 libzstd1 ca-certificates \
+      libvulkan1 libgomp1 libelf1 libexpat1 libzstd1 ca-certificates libdrm-common \
       bash-completion sudo procps passwd less findutils util-linux ncurses-base curl wget \
     && rm -rf /var/lib/apt/lists/*
 COPY vulkan /opt/strix-halo-llamacpp/vulkan
