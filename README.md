@@ -45,7 +45,7 @@ and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
 ## What's inside
 
 - **`vulkan/`** self-contained Vulkan/RADV build (recommended default backend on this hardware).
-  Bundles **Mesa 26.3.0-devel RADV** + **libdrm 2.4.133**, so it does not use or need the host
+  Bundles **Mesa 26.3.0-devel RADV** + **libdrm 2.4.134**, so it does not use or need the host
   Mesa. Runs directly on the host with just the Vulkan loader and `/dev/dri`.
 - **`hip/`** ROCm/HIP build carrying the quantized-KV decode fix. Needs the ROCm runtime, so it
   ships as a container image (`Dockerfile.hip`).
@@ -67,7 +67,7 @@ curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.
 [fork](https://github.com/Nathanw1014/llama.cpp) (the complete Vulkan stack) — see **[BUILD.md](BUILD.md)**
 for the exact toolchain; `build-from-source.sh` then assembles the built binaries + driver into this layout.
 
-The tarball (58 MB) and container images are shipped via GitHub Releases / ghcr, not tracked in git.
+The tarball (31 MB) and container images are shipped via GitHub Releases / ghcr, not tracked in git.
 
 To check a tarball is really using the bundled GPU driver rather than falling back to CPU, run
 `./vulkan/llama-bench -m MODEL.gguf -ngl 99 -p 128 -n 8 -r 1` and confirm the `backend` column
@@ -221,7 +221,7 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
 
 ## Toolchain
 
-- GPU driver: Mesa 26.3.0-devel (RADV), built with libdrm 2.4.133, shader compiler shaderc v2026.3-dev.
+- GPU driver: Mesa 26.3.0-devel (RADV), built with libdrm 2.4.134, shader compiler shaderc v2026.3-dev.
 - llama.cpp: recent master with the fixes applied. HIP build on ROCm 7.2.4.
 
 ## Host tuning (optional)

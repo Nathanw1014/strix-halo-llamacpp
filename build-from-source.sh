@@ -24,7 +24,26 @@ mkdir -p "$HERE/vulkan/bin" "$HERE/vulkan/driver" "$HERE/hip/bin"
 
 echo "== vulkan: binaries + shared libs =="
 cp "$VK_BUILD"/bin/llama-server "$VK_BUILD"/bin/llama-cli "$VK_BUILD"/bin/llama-bench "$HERE/vulkan/bin/"
-cp -P "$VK_BUILD"/bin/*.so* "$HERE/vulkan/bin/"
+# Copy only the LIVE libraries, by walking each unversioned .so symlink to its target.
+# A long-lived build dir accumulates every soversion it has ever produced (libllama-common
+# .so.0.0.243 ... .0.0.319), and a blanket `cp *.so*` shipped all of them - 46 MB of dead
+# weight in the tarball. Anything no unversioned symlink points at is stale by definition.
+copied=0
+for l in "$VK_BUILD"/bin/*.so; do
+    [ -e "$l" ] || continue
+    if [ -L "$l" ]; then
+        cur="$l"
+        while [ -L "$cur" ]; do                      # lib.so -> lib.so.0 -> lib.so.0.0.N
+            cp -P "$cur" "$HERE/vulkan/bin/"
+            cur="$(dirname "$cur")/$(readlink "$cur")"
+        done
+        cp "$cur" "$HERE/vulkan/bin/"
+    else
+        cp "$l" "$HERE/vulkan/bin/"                  # plain lib*-impl.so
+    fi
+    copied=$((copied + 1))
+done
+echo "   $copied library chains copied (stale soversions in $VK_BUILD/bin skipped)"
 
 echo "== vulkan: bundle Mesa RADV + libdrm =="
 cp -P "$MESA_ICD_DIR"/libvulkan_radeon.so "$HERE/vulkan/driver/"
