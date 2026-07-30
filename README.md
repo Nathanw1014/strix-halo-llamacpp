@@ -48,7 +48,8 @@ and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
   Bundles **Mesa 26.3.0-devel RADV** + **libdrm 2.4.134**, so it does not use or need the host
   Mesa. Runs directly on the host with just the Vulkan loader and `/dev/dri`.
 - **`hip/`** ROCm/HIP build carrying the quantized-KV decode fix. Needs the ROCm runtime, so it
-  ships as a container image (`Dockerfile.hip`).
+  is built as a container image (`Dockerfile.hip`). **Not published**: no `:hip` tag exists on
+  ghcr and `hip/bin` is git-ignored, so this one is build-it-yourself today — see below.
 
 ## Getting the binaries
 
@@ -67,7 +68,8 @@ curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.
 [fork](https://github.com/Nathanw1014/llama.cpp) (the complete Vulkan stack) — see **[BUILD.md](BUILD.md)**
 for the exact toolchain; `build-from-source.sh` then assembles the built binaries + driver into this layout.
 
-The tarball (31 MB) and container images are shipped via GitHub Releases / ghcr, not tracked in git.
+The tarball (31 MB) ships via GitHub Releases and the Vulkan container image via ghcr; neither is
+tracked in git. The HIP image is not published — build it locally if you need the ROCm decode fix.
 
 To check a tarball is really using the bundled GPU driver rather than falling back to CPU, run
 `./vulkan/llama-bench -m MODEL.gguf -ngl 99 -p 128 -n 8 -r 1` and confirm the `backend` column
@@ -169,10 +171,11 @@ docker run --rm --device /dev/dri -v /path/to/models:/models -p 8080:8080 \
 
 ### Container (HIP / ROCm, decode fix)
 
-`hip/bin` is git-ignored, so `docker build -f Dockerfile.hip` fails on a fresh clone with
-`"/hip/bin": not found`. Build the `fa-tile-dequant-on-load` branch in a ROCm image first and
-populate it with `HIP_BUILD=<build-dir> ./build-from-source.sh` (see [BUILD.md](BUILD.md) §4), or
-just pull the published image instead of building.
+⚠️ **There is no published HIP image.** ghcr carries only the `vulkan` tag, and `hip/bin` is
+git-ignored, so `docker build -f Dockerfile.hip` on a fresh clone fails with
+`"/hip/bin": not found`. To use the HIP decode fix you have to build it: check out
+`fa-tile-dequant-on-load`, build it in a ROCm image targeting gfx1151, populate the payload with
+`HIP_BUILD=<build-dir> ./build-from-source.sh` (see [BUILD.md](BUILD.md) §4), and only then:
 
 ```
 docker build -t strix-halo-llamacpp:hip -f Dockerfile.hip .
@@ -205,8 +208,10 @@ toolbox enter strix-fa
 llama-server -m ~/models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
 ```
 
-For the HIP image use `strix-halo-llamacpp:hip` the same way (it still needs `/dev/kfd`, which distrobox/toolbox
-pass through along with `/dev/dri`).
+The HIP image works the same way once you have built it locally (it additionally needs `/dev/kfd`,
+which distrobox/toolbox pass through along with `/dev/dri`) — but there is no `:hip` tag on ghcr to
+pull, so `distrobox create --image ghcr.io/nathanw1014/strix-halo-llamacpp:hip` will fail. Only the
+Vulkan image is published.
 
 ## Recommended flags
 
