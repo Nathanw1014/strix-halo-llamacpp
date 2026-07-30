@@ -18,7 +18,7 @@ config-tweaks).
 
 ![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k context](../graphs/01_coder30b_prefill_2.66x.png)
 
-![Qwen3.6-35B-A3B Q4_K_XL, same weights: quant KV matches/beats f16 on prefill and decode at 1/4 the KV memory, versus the best public f16 numbers](../graphs/02_35b_q4kxl_samequant.png)
+![Qwen3.6-35B-A3B Q4_K_XL, same weights: q8 KV matches/beats f16 on prefill and decode at half the KV memory, versus the best public f16 numbers](../graphs/02_35b_q4kxl_samequant.png)
 
 ![Decode throughput vs depth: quantized KV also generates faster than f16 at depth, both models](../graphs/03_decode_both.png)
 
@@ -169,11 +169,12 @@ all f16 / q8_0 / q4_0 / q4_1 / q5_0 / q5_1 cases pass; only the experimental iq4
 Both models are A3B MoE. Qwen3-Coder-30B-A3B = Q6_K_XL, head-dim 128, gqa 8.
 Qwen3.6-35B-A3B = Q5_K_XL, head-dim 256, gqa 8. All values t/s, r=3.
 "post"/"deq-once" = dequant-once ON; "pre"/"base" = OFF (plain master). Start-vs-end f16
-canary: deep metrics within 1%, d0 pp within +3.5%.
+canary: prefill within 0.8% at every depth; decode within 0.5% except d0 (+2.3%) and d16384 (-1.8%).
 
 > **Re-validated on `amd_iommu=off` (0–64k, 2026-07-26).** The full matrix was re-run on a clean iommu-off
-> box; start/end canaries agreed within 0.3% (no drift). The headline reproduces: Coder-30B prefill @64k
-> stock-f16 71.9 → q4 190 (**2.64x**) / q8 191 (**2.66x**); 35B decode @64k **+18%**. The IOMMU itself
+> box; start/end prefill canaries agreed within 0.9%, decode canaries within 3.9%. The headline reproduces:
+> Coder-30B prefill @64k stock-f16 71.9 → q4 190 (**2.64x**) / q8 191 (**2.66x**); 35B decode @64k **+17%**
+> on the all-fixes arm (+18-20% with mmid off, or on the stock-q4 arm). The IOMMU itself
 > accounts for only **~+3–5% prefill, ~neutral decode** (measured off-vs-on, same build), so the detailed
 > per-depth tables below — from the original iommu-on run — sit a few percent low but are unchanged in shape
 > and conclusion. Metric note: the repo graphs are **pp512**; the "vs public" section is **pp2048** to match
@@ -310,10 +311,11 @@ longer needs rescuing. Same protocol, same driver as the ceiling runs; raw dumps
 
 All three KV types now land within 1% of each other at every depth: **KV quantization is no
 longer a prefill-speed decision on this stack**, only a memory / decode-bandwidth one. Decode
-is untouched by design: tg32 deltas vs the published tables are within +/-2% at every depth
-and KV type (`contig_*` files include the tg32 rows). The small q8/q4 prefill gains over the
-published CEIL numbers (+2 to +5%) are build drift from the
-base rebase and mmid flag defaults, not this fix (per-flag decomposition to follow).
+is untouched by design: every tg32 delta vs the published tables is neutral-to-positive and
+within +4% (largest: q4 @d65536 +4.0%, q8 @d16384 +3.2%, q8 @d32768 +3.2%) - the same build
+drift discussed below, not a decode change (`contig_*` files include the tg32 rows). The small
+q8/q4 prefill gains over the published CEIL numbers (+2 to +5%) are build drift from the base
+rebase and mmid flag defaults, not this fix (per-flag decomposition to follow).
 
 ### Prefill pp512 (t/s) - Qwen3.6-35B-A3B (hd256), vs pre-PR master
 
@@ -335,7 +337,7 @@ had regressed on this model - see the scache note below). The earlier capture on
 (`contig_qwen35b_*`) is kept for the before/after.
 
 Decode is flat vs master on f16 (+/-1.5% at every depth); quantized KV keeps its established
-decode advantage at depth (tg32 @ d65536: f16 41.5, q8 47.5, q4 48.9 - the KV-bandwidth
+decode advantage at depth (tg32 @ d65536: f16 41.6, q8 47.1, q4 49.2 - the KV-bandwidth
 effect, unrelated to this fix). Coder-30B vs the same fresh master baseline
 (`results/prepr_coder30b_f16.md`): stock still collapses to 72.2 pp512 @ d65536, so the fix's
 headline stands at **2.63x vs current master** (190.0 vs 72.2).
@@ -355,7 +357,7 @@ same prompt length, ubatch 2048 alone is worth **+39%** on Coder-30B (pp2048 d0:
 -> 1631 @ ub2048; `results/iso_ub512_pp2048_coder30b_f16.md`). It is NOT universal: on the
 35B the same isolation measures **-12%** at d0 (1180 -> 1035), so leave the 35B at the
 default shallow and prefer ub2048 only for deep-context work there (at d65536 it wins:
-537 vs 297 stock). Keep 512 also if you serve many concurrent streams and care about decode
+541 vs 297 stock). Keep 512 also if you serve many concurrent streams and care about decode
 latency spikes during long prefill chunks: the ubatch is the scheduling quantum. Decode is
 unaffected by ubatch either way (tg32 58.3 @ ub2048 vs 57.3 @ ub512, same build - measured,
 `results/ub2048_contig_qwen35b_f16.md`). Prompts shorter than the ubatch are one chunk
@@ -380,6 +382,13 @@ is KV-type-insensitive like ours). Vulkan leads at d0 by ~11%; ROCm leads at dep
 (a coopmat1 kernel-structure residual, under investigation). rocWMMA-ON HIP builds are far
 slower at depth than rocWMMA-off and should not be used as the comparison point.
 
+> **Superseded for RADV-vs-ROCm claims.** This column pairs two builds from different upstream
+> heads. The 2026-07-30 matrix runs both backends from the same head (`8161641`) under a
+> stabilized protocol, and there the depth deficit is gone: it belonged to the pre-FA-stack
+> build (RADV stock trails ROCm by 10-15% at d8192-d32768), while with the stack RADV leads at
+> every depth by +3.0 to +4.4% and by +14% at d0, on all three KV types. Prefer that matrix for
+> any RADV-vs-ROCm statement; this column is kept because graph 05 is drawn from it.
+
 ### Prefill pp2048 @ ub2048 - Qwen3.6-35B-A3B (and the scale-cache regression)
 
 | depth | this stack f16 | this stack q8 | stock master f16 | f16 vs stock |
@@ -398,13 +407,15 @@ this model at ub2048 and -4% at the standard protocol. Build `146fb73` disables 
 drift was exonerated by measurement: stock at the stack's own base `ff067f7` benches
 identical to current master on this shape). With that fix the stack leads stock master on
 the 35B at every depth and both protocols. tg32 unchanged throughout, and measured
-ubatch-invariant (58.0 @ ub2048 vs 57.9 @ ub512). Raw: `results/ub2048_scachefix_qwen35b_*`,
+ubatch-invariant (58.0 @ ub2048 vs 58.7 @ ub512, same build). Raw: `results/ub2048_scachefix_qwen35b_*`,
 `results/ub2048_prepr_qwen35b_f16.md`.
 
 ### Drift note: where the +2-5% over the published q8/q4 tables comes from
 
 Measured decomposition (Coder-30B q8, pp512 d0; `results/drift_coder30b_q8_*`): upstream base
-refresh `5c3a586` -> `b10133` = **+3.2%**, F16B-on-by-default = **+1.2%**, M128 = **+0.3%**.
+refresh `5c3a586` -> `ff067f7` = **+3.2%**, F16B-on-by-default = **+1.2%**, M128 = **+0.3%**.
+(Earlier notes labelled that base `b10133`; per PROVENANCE that was a stale label from a
+previous rebase and the stack base is `ff067f7`.)
 The same base-staleness effect, larger, is what the 35B ub2048 table above shows against
 today's master.
 
