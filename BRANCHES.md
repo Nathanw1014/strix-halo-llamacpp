@@ -15,6 +15,10 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 | `vulkan-mmid-rowlists` | mmid row-list prepass: removes the redundant per-workgroup expert-ID scan in `MUL_MAT_ID` | Vulkan | upstream candidate (clean cherry-pick onto master, MUL_MAT_ID 2/2) |
 | `fa-tile-dequant-on-load` | dequantize KV on load in the tile FA kernel, route quantized decode there (decode) | HIP / CUDA | public branch, testable now; upstream PR not yet opened |
 | `vulkan-fa-f16-kv-contig` | contiguize strided f16 KV before FA (the f16 counterpart of the dequant-once transpose; 2.63x pp @ 64k vs stock master) | Vulkan | stacked on the #25494 branch (extends its scratch infra); PR queued behind #25494 |
+| `feat/fa-p-hoist` | hoist the GEMM2 P `coopMatLoad` out of the `hsv_tile` loop (prefill) | Vulkan | ready; unconditional and 8 insertions in one file, but wants a second vendor first (the win depends on the driver unrolling the loop, and cm1 is shared with NVIDIA pre-Blackwell / Intel / AMD-Windows) |
+
+Those five are the whole upstream set. Everything below ships in the combined branch but is
+**not** offered upstream — see the per-item reasons in the 2026-07-30 section and the README.
 
 ## Combined / max-performance branches
 
@@ -51,6 +55,15 @@ All are merged into `strix-halo-vulkan` (tip `54d76da`).
 
 Combined: +2.8 to +3.1% at d0 rising to +21.6 to +22.0% at d32768, consistent across f16/q8_0/q4_0
 KV, with decode unchanged. Full matrix and caveats: the 2026-07-30 RADV-vs-ROCm data pack.
+
+**Upstream status of these four.** Only `feat/fa-p-hoist` is an upstream candidate (it is listed
+in the table at the top). `feat/fa-wave32-rule` is strong but not ready: it needs its env gate
+removed, an assert relocated that can fire from device properties alone on a subgroup-128/256
+device, and confirmation on a second AMD part. `feat/fa-psh-relayout` is **on hold** — no measured
+standalone benefit, it exists to enable the hoist, and it steers into RADV's only
+alignment-asserting coopmat path with an unasserted 16-byte precondition; its host shmem estimator
+fix is not standalone either, since upstream's estimator is correct without the relayout.
+`test/fa-perf-probes` is benchmark scaffolding, not a fix, and is not a candidate at all.
 
 ### Fixes (remove wasted work)
 

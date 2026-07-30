@@ -118,25 +118,34 @@ scratch is gated on device-local capacity, with `GGML_VK_FA_DEQUANT_RESERVE_MB` 
 
 ## Branches (upstreaming)
 
-Each fix is kept on its own clean, minimal branch of the llama.cpp fork so it can be reviewed and
-upstreamed independently. All of them are merged into `strix-halo-vulkan`, which is what the
-tarball, the container images and BUILD.md all build from — so every route carries every fix.
+Five of the fixes are genuine llama.cpp upstream candidates: each is kept on its own clean,
+minimal branch so it can be reviewed and merged on its own, independent of this toolbox.
 
-| Branch | Fix | Status |
+| Branch | Fix | Upstream status |
 |---|---|---|
-| [`vulkan-coopmat1-fa-dequant-transpose`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-coopmat1-fa-dequant-transpose) | Vulkan FA dequant-once, q8 KV (prefill) | in-flight PR #25494 |
-| [`vulkan-fa-f16-kv-contig`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-fa-f16-kv-contig) | Vulkan f16 KV contiguize before FA (prefill) | pushed; stacked on the #25494 branch, PR queued behind it |
-| [`vulkan-mmid-rowlists`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-rowlists) | mmid row-list prepass (MoE prefill) | upstream candidate, pushed |
-| [`feat/fa-p-hoist`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-p-hoist) | FA GEMM2 P-load hoist (prefill) | pushed 2026-07-30; strongest standalone upstream candidate of the three |
-| [`feat/fa-psh-relayout`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-psh-relayout) | FA `Psh` query-major relayout (perf-neutral alone; enables the hoist) | pushed 2026-07-30 |
-| [`feat/fa-wave32-rule`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-wave32-rule) | FA 32-wide subgroup pin (`GGML_VK_FA_WAVE32`) | pushed 2026-07-30 |
-| [`fa-tile-dequant-on-load`](https://github.com/Nathanw1014/llama.cpp/tree/fa-tile-dequant-on-load) | HIP tile-dequant (quantized-KV decode) | public branch, testable; upstream PR not yet opened |
-| [`test/fa-perf-probes`](https://github.com/Nathanw1014/llama.cpp/tree/test/fa-perf-probes) | perf-only probe cases for the FA stack | pushed 2026-07-30; tests only, no runtime change |
+| [`vulkan-coopmat1-fa-dequant-transpose`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-coopmat1-fa-dequant-transpose) | Vulkan FA dequant-once, q8 KV (prefill) | **in-flight, PR #25494** |
+| [`vulkan-fa-f16-kv-contig`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-fa-f16-kv-contig) | Vulkan f16 KV contiguize before FA (prefill) | ready; stacked on the #25494 branch since it extends that scratch infra, so queued behind it |
+| [`vulkan-mmid-rowlists`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-rowlists) | mmid row-list prepass (MoE prefill) | ready; clean cherry-pick onto master |
+| [`feat/fa-p-hoist`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-p-hoist) | FA GEMM2 P-load hoist (prefill) | ready, wants a second vendor first — it is unconditional and benefits every KHR-coopmat device, but the win depends on the driver unrolling the loop, and cm1 is shared with NVIDIA pre-Blackwell, Intel and AMD-Windows |
+| [`fa-tile-dequant-on-load`](https://github.com/Nathanw1014/llama.cpp/tree/fa-tile-dequant-on-load) | HIP tile-dequant (quantized-KV decode) | ready; PR not yet opened |
 
-The combined branch [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan)
-merges all of the above onto upstream master `8161641` (2026-07-28). It also carries the non-native
-K/V routing fix (`8929240`) and the mmid scale-cache disable (`bfc1eb4`), neither of which has a
-standalone branch.
+**Not offered upstream, though they ship here.** The combined branch
+[`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) merges the
+five above onto upstream master `8161641` (2026-07-28) plus four changes that are deliberately
+local:
+
+- `feat/fa-wave32-rule` (`dfb619c`) — the FA subgroup pin. There is real precedent for it (the
+  sibling scalar path already does AMD-specific wave selection) and it would help every wave64
+  AMD part, but it needs its env gate removed, an assert relocated that can fire from device
+  properties alone on a subgroup-128/256 device, and confirmation on a second AMD part.
+- `feat/fa-psh-relayout` (`40f85eb`) — **on hold.** No measured standalone benefit; it exists to
+  enable the hoist, and it steers into RADV's only alignment-asserting coopmat path.
+- the non-native K/V routing fix (`8929240`) — correct for this stack, but upstream master
+  `8161641` reworked the same area (#24585) and the two need reconciling first.
+- the mmid scale-cache disable (`bfc1eb4`) — a revert of a local change; nothing to upstream.
+
+`test/fa-perf-probes` is a benchmark-only branch (`test-backend-ops perf` cases used to measure
+the FA work). It is not a fix and is not an upstream candidate.
 
 Full inventory (combined + experimental branches) and the honest **mmid fixes vs config-tweaks**
 taxonomy (one real mmid fix, the rest marginal knobs): **[BRANCHES.md](BRANCHES.md)**.
