@@ -8,5 +8,5 @@ ENV PATH=/opt/strix-halo-llamacpp/hip/bin:$PATH \
     LD_LIBRARY_PATH=/opt/strix-halo-llamacpp/hip/bin:${LD_LIBRARY_PATH}
 WORKDIR /models
 EXPOSE 8080
-ENTRYPOINT ["/opt/strix-halo-llamacpp/hip/bin/llama-server"]
-CMD ["--help"]
+# No baked ENTRYPOINT — see Dockerfile.vulkan; shell by default, binaries on PATH.
+CMD ["/bin/bash"]

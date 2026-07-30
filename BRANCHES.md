@@ -24,7 +24,7 @@ Those five are the whole upstream set. Everything below ships in the combined br
 
 | Branch | Contents | Use |
 |---|---|---|
-| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `b1a10f9`/`9019eb4`) + non-native K/V type routing (`8929240`) + scale-cache disable (the scache had regressed) + the 2026-07-30 FA stack (`e11cafa` P-load hoist, `40f85eb` Psh relayout, `dfb619c` wave32 pin), rebased on upstream **`8161641`** (2026-07-28 master; pre-rebase tip archived as `strix-halo-vulkan-ff067f7`, where the older `442d7df`/`3957182`/`1abdd92`/`146fb73` hashes still resolve) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `b1a10f9`/`9019eb4`) + non-native K/V type routing (`8929240`) + scale-cache disable (the scache had regressed) + the 2026-07-30 FA stack (`e11cafa` P-load hoist, `40f85eb` Psh relayout, `dfb619c` wave32 pin) + `0b29b30` all perf env gates **default-on** (opt-out `=0`), rebased on upstream **`8161641`** (2026-07-28 master; pre-rebase tip archived as `strix-halo-vulkan-ff067f7`, where the older `442d7df`/`3957182`/`1abdd92`/`146fb73` hashes still resolve) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
 | `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
 | `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 
@@ -35,6 +35,10 @@ Those five are the whole upstream set. Everything below ships in the combined br
 | all-quant dequant-transpose (`6e2b7ea`) | extends #25494's dequant-once to q4_0/q4_1/q5_0/q5_1 | this is what makes q4 KV prefill fast; shipped as `569987e`; `iq4_nl` was broken when this was written but the routing fix (`8929240`) closed that and FLASH_ATTN_EXT is now 5105/5105 including all 340 iq4_nl cases |
 
 ## mmid config flags: fixes vs tweaks
+
+> **Since `0b29b30` (2026-07-30) every flag below is ON by default on `strix-halo-vulkan`** —
+> the ceiling branch ships max-perf with no flags; `=0` opts out. A/B runs must now set the
+> off-arm explicitly (unset no longer means off). Per-flag numbers below are unchanged.
 
 A **fix** removes wasted work (an algorithmic inefficiency). A **tweak** just changes a hardware/format
 knob hoping the same work runs faster. On this kernel the fixes won and the tweaks did not, because the

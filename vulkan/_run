@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Self-contained launcher: bundled Mesa RADV + libdrm, with the max-perf flag set on by default.
+# Self-contained launcher: bundled Mesa RADV + libdrm, with the max-perf flags set on by default.
 #
-# These are the same seven env vars the published benchmarks were measured with. Each is
-# opt-out: set it to 0 before running to disable, e.g. GGML_VK_MMID_F16B=0 llama-server ...
+# Since fork commit 0b29b30 (2026-07-30) the binaries default ALL of these on by themselves;
+# the exports below are kept so older payloads behave identically. Each is opt-out: set it
+# to 0 before running to disable, e.g. GGML_VK_MMID_F16B=0 llama-server ...
 #   GGML_VK_MMID_ROWLISTS  MoE row-list prepass (the real mmid fix)
 #   GGML_VK_MMID_SMALLN    tile-occupancy fix at small per-expert n
 #   GGML_VK_MMID_BM64      64-row expert tile

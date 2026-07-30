@@ -14,7 +14,8 @@ COPY vulkan /opt/strix-halo-llamacpp/vulkan
 ENV PATH=/opt/strix-halo-llamacpp/vulkan:$PATH
 WORKDIR /models
 EXPOSE 8080
-# App entrypoint for `docker run`. distrobox/toolbox ignore it and open a shell instead, where
-# llama-server/llama-cli/llama-bench are on PATH and the wrapper sets the driver + mmid env.
-ENTRYPOINT ["/opt/strix-halo-llamacpp/vulkan/llama-server"]
-CMD ["--help"]
+# No baked ENTRYPOINT: a plain `docker run -it` drops into a shell (the toolbox/distrobox
+# workflow), and `docker run ... <image> llama-server -m ...` runs the server via PATH.
+# A baked llama-server entrypoint made every interactive invocation exit immediately
+# (field-reported); binaries are on PATH and the wrapper sets the driver + perf env.
+CMD ["/bin/bash"]

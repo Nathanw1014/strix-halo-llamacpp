@@ -5,8 +5,9 @@ ICD=/home/alloy/mesa-main/build-rel/src/amd/vulkan/radeon_devenv_icd.x86_64.json
 LDP=/home/alloy/libdrm-install/lib
 BASE=/home/alloy/llama-base5c/build-ceil/bin/llama-bench
 CEIL=/home/alloy/llama-fullstack/build-ceil/bin/llama-bench
-MMID_ON="GGML_VK_MMID_ROWLISTS=1 GGML_VK_MMID_SMALLN=1 GGML_VK_MMID_BM64=1 GGML_VK_MMID_WAVE32=1"
-MMID_OFF="GGML_VK_MMID_ROWLISTS=0 GGML_VK_MMID_SMALLN=0 GGML_VK_MMID_BM64=0 GGML_VK_MMID_WAVE32=0 GGML_VK_MMID_F16B=0"
+# 0b29b30 flipped defaults ON: both arms fully explicit or the off-arm silently inherits defaults
+MMID_ON="GGML_VK_MMID_ROWLISTS=1 GGML_VK_MMID_SMALLN=1 GGML_VK_MMID_BM64=1 GGML_VK_MMID_WAVE32=1 GGML_VK_MMID_F16B=1 GGML_VK_MMID_M128=1"
+MMID_OFF="GGML_VK_MMID_ROWLISTS=0 GGML_VK_MMID_SMALLN=0 GGML_VK_MMID_BM64=0 GGML_VK_MMID_WAVE32=0 GGML_VK_MMID_F16B=0 GGML_VK_MMID_M128=0"
 OUT=/home/alloy/kv-ceil-results; mkdir -p "$OUT"; LOG="$OUT/run.log"; : > "$LOG"
 log(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG"; }
 declare -A M=(

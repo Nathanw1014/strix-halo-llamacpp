@@ -166,8 +166,10 @@ Requires the Vulkan loader (`libvulkan1`) and read access to `/dev/dri`. Everyth
 ```
 docker build -t strix-halo-llamacpp:vulkan -f Dockerfile.vulkan .
 docker run --rm --device /dev/dri -v /path/to/models:/models -p 8080:8080 \
-  strix-halo-llamacpp:vulkan -m /models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
+  strix-halo-llamacpp:vulkan llama-server -m /models/MODEL.gguf -ngl 99 -fa 1 --host 0.0.0.0
 ```
+No baked entrypoint: `docker run -it` (no command) gives an interactive shell with the
+binaries on PATH — the toolbox workflow.
 
 ### Container (HIP / ROCm, decode fix)
 
@@ -182,7 +184,7 @@ docker build -t strix-halo-llamacpp:hip -f Dockerfile.hip .
 docker run --rm --device /dev/kfd --device /dev/dri \
   --group-add video --group-add render --security-opt seccomp=unconfined \
   -v /path/to/models:/models -p 8080:8080 \
-  strix-halo-llamacpp:hip -m /models/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
+  strix-halo-llamacpp:hip llama-server -m /models/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
 ```
 
 ### distrobox / toolbox (interactive)
