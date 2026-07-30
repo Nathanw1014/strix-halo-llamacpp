@@ -57,7 +57,7 @@ Three ways — the first two need **no build and no Docker**:
 **1. Portable tarball (recommended for a quick start).** Self-contained — bundles the RADV driver, so it
 doesn't use the host's Mesa; only needs `libvulkan1` + read access to `/dev/dri`:
 ```
-curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.1/strix-halo-llamacpp-vulkan-portable.tar.gz | tar xz
+curl -L https://github.com/Nathanw1014/strix-halo-llamacpp/releases/download/v0.2/strix-halo-llamacpp-vulkan-portable.tar.gz | tar xz
 ./vulkan/llama-server -m /path/to/MODEL.gguf -ngl 99 -fa 1 -ctk q8_0 -ctv q8_0 --host 0.0.0.0
 ```
 
