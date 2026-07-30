@@ -70,7 +70,10 @@ BENCHMARK ARM -> BUILD PIN  (added 2026-07-30; previously undocumented)
   whatever HEAD llama-fullstack is on. build-ceil has since been rebuilt to 54d76da
   (2026-07-30), so re-running the shipped recipe today does NOT reproduce the ceil arm --
   it silently substitutes a much newer binary under the same arm name. Check out 63f88cc
-  explicitly, or read the `build:` line inside each raw results/ file, which is authoritative.
+  explicitly, or read the `build:` line inside each raw results/ file. NB that banner is NOT always
+    authoritative: 15 files (contig_*, ub2048_contig_*, drift_*, iso_*) are stamped f69e4ea (276)
+    but were built from 74434c3, and f69e4ea contains no GGML_VK_FA_KV_CONTIG at all. Use the
+    symbol check below when it matters.
 
   Forensic check for "is this binary pre- or post- the 2026-07-30 FA stack":
     strings <build>/bin/libggml-vulkan.so* | grep -c GGML_VK_FA_WAVE32

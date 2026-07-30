@@ -173,7 +173,7 @@ strided f16 K/V through the same scratch via a pure copy shader (no dequant), en
 for prefill (`neq1 >= 64`) and only when the rows are actually strided. Decode is untouched.
 
 - Scope: **f16 KV, prefill only**; **on by default** since `3957182` (`GGML_VK_FA_KV_CONTIG=0` opts out).
-- Branch: `Nathanw1014/llama.cpp` `strix-halo-vulkan`, commits `442d7df` (fix) + `74434c3` (tests) + `3957182` (default-on).
+- Branch: `Nathanw1014/llama.cpp` `strix-halo-vulkan`, commits `b1a10f9` (fix) + `110ac59` (tests) + `9019eb4` (default-on). The pre-rebase hashes `442d7df`/`74434c3`/`3957182` resolve only in the archived `strix-halo-vulkan-ff067f7`.
   Upstream-prep: `vulkan-fa-f16-kv-contig` (env-free, stacked on the #25494 branch since it extends that scratch infra).
 - Status: **public branch, testable now**; upstream PR queued behind #25494.
 - Evidence: `results/contig_coder30b_*` vs `results/post_coder30b_f16` (section below).
@@ -426,12 +426,14 @@ slower at depth than rocWMMA-off and should not be used as the comparison point.
 
 > **Superseded for RADV-vs-ROCm claims.** This column pairs two builds from different upstream
 > heads. The 2026-07-30 matrix runs both backends from the same head (`8161641`) under a
-> stabilized protocol. There, **on Coder-30B**, the shipped stack (`bb4002a` - what the v0.1
-> tarball and the container carry) still trails ROCm by 10-15% at d8192-d32768; the four FA
-> changes committed 2026-07-30 (`e11cafa`, `40f85eb`, `dfb619c`) close that and lead ROCm by
+> stabilized protocol. There, **on Coder-30B**, the pre-FA-stack branch tip (`bb4002a`) still
+> trails ROCm by 10-15% at d8192-d32768; the three FA changes committed 2026-07-30 (`e11cafa`,
+> `40f85eb`, `dfb619c`; `54d76da` adds perf probes only) close that and lead ROCm by
 > +3.0 to +4.4% at those depths and by +14% at d0, on all three KV types. **On the 35B, ROCm
 > still leads d0 by ~5.6%**, d8192 is a tie, and RADV leads only from d16384. So a
-> build-from-source reader gets the leading arm; a tarball or container reader does not yet.
+> reader on the current branch tip gets the leading arm, provided `GGML_VK_FA_WAVE32=1` is set
+> (the bundled `vulkan/_run` sets it; a raw `build-vk/bin/llama-bench` does not). Since v0.2 the
+> tarball and container are cut from that tip too.
 > Prefer that matrix for any RADV-vs-ROCm statement; this column is kept because graph 05 is
 > drawn from it.
 

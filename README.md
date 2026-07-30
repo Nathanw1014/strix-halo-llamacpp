@@ -32,10 +32,10 @@ all at depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k whi
 | all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
 | mmid row-list prepass | Vulkan | **+8.4%** MoE prefill on the 2026-07-14 window (q8 KV, base `b805834`); the current in-repo isolation on f16 measures +11.2% at d0 / +8.2% at d16384 (`results/finalize/rowlists_{off,on}.md`). Model-dependent; ~1–2% on Coder at depth. |
 | mmid BM64 | Vulkan | +1.3% (13.5 t/s against ±3.5 — near noise). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
-| mmid WAVE32 / F16B | Vulkan | marginal: +2.8% / +2.4%. WAVE32 sits at the ~2.5% canary drift band and its mechanism caps out ~1.7%, so treat it as noise-adjacent. F16B on by default. |
+| mmid WAVE32 / F16B | Vulkan | marginal. WAVE32 +2.8%, but its mechanism caps out ~1.7%, so treat it as noise-adjacent. F16B is quoted at +2.4% from an unvendored model; the only in-repo isolation (Coder-30B) measures +1.2% at d0. On by default. |
 | mmid TILE16 / INT | Vulkan | −3.8% / −8% (documented negatives, never enabled). The −8% arm is INT+SMALLN and its control carried BM64 while neither INT arm did, so part of that loss is the missing BM64; INT alone is −7.9%. |
 | HIP tile-dequant KV | HIP/ROCm | **+128% / +232%** decode @32k / 64k (beats f16) |
-| `amd_iommu=off` | host | ~+3–5% prefill (optional host tuning) |
+| `amd_iommu=off` | host | +1.0–7.3% prefill, decode within noise (optional host tuning) |
 
 Honest read: on Coder the **FA dequant-once fix is essentially the entire prefill win**; `rowlists` is the
 real MoE-prefill fix (larger on other shapes); the rest are small waste-removals and the knob-tweaks are
@@ -72,31 +72,74 @@ The tarball (31 MB) and container images are shipped via GitHub Releases / ghcr,
 To check a tarball is really using the bundled GPU driver rather than falling back to CPU, run
 `./vulkan/llama-bench -m MODEL.gguf -ngl 99 -p 128 -n 8 -r 1` and confirm the `backend` column
 says `Vulkan` (not `CPU`) and that it prints a `ggml_vulkan: 0 = ...RADV STRIX_HALO` line.
+**The v0.1 tarball fails this check** — its ICD manifest was missing a required field, so the
+bundled driver was skipped and it ran on CPU. Use v0.2 or later.
+
+**Which route gets which fixes.** All three routes are cut from the same `strix-halo-vulkan` tip,
+so they carry the same fixes. The benchmark tables further down were measured on an earlier build
+(`63f88cc`, 2026-07-23) and therefore predate the f16 KV contiguize pass and the 2026-07-30 FA
+stack: they understate the current artifacts rather than overstate them.
 
 ## The fixes
 
 - **Vulkan: dequantize KV once in the FA kernel (prefill).** Quantized KV was re-dequantized on
   every FA pass; now it is dequantized once into a transposed scratch and reused. This is what
-  makes quantized-KV **prefill** fast at depth (up to 2.66x f16 on head-dim-128 models).
+  makes quantized-KV **prefill** fast at depth (up to 2.66x f16 on head-dim-128 models). The same
+  path covers q4_0/q4_1/q5_0/q5_1 and iq4_nl, so q4 KV lands the same win at 1/4 the memory.
+- **Vulkan: contiguize strided f16 KV before FA (prefill).** The f16 counterpart of the
+  dequant-once transpose. The KV cache stores heads interleaved per token, so f16 K/V reached the
+  coopmat1 kernel strided and a 16x16 tile touched 16 cache lines instead of 4; quantized KV never
+  paid this, because the dequant scratch already writes per-head-contiguous rows. Routing strided
+  f16 K/V through the same scratch with a pure copy shader takes Coder-30B f16 pp512 @64k from
+  70.6 to 190.0 t/s (2.69x vs the published post baseline, 2.63x vs current master `8161641`).
+  Prefill only, decode untouched. On by default; `GGML_VK_FA_KV_CONTIG=0` opts out.
+- **Vulkan: coopmat1 FA prefill stack (2026-07-30).** Three changes: hoist the GEMM2 P
+  `coopMatLoad` out of the `hsv_tile` loop, store `Psh` query-major so the GEMM2 A load vectorizes,
+  and pin a 32-wide subgroup where narrowing is free. Combined, +2.8 to +3.1% at d0 rising to
+  +21.6 to +22.0% at d32768 on Coder-30B (pp2048/ub2048), consistent across f16/q8_0/q4_0 KV, with
+  decode unchanged. The subgroup pin is the `GGML_VK_FA_WAVE32` knob (see Recommended flags).
+- **Vulkan: route non-native FA K/V types through the dequant-once path.** `iq4_nl` has no native
+  FA shader on the scalar/coopmat1 paths, and outside the dequant-once path the shader read
+  garbage. `ggml_vk_fa_kv_native()` is now the single source of truth for native K/V types and
+  `supports_op` mirrors every hard gate, so admission and dispatch always agree. Correctness only,
+  no perf claim: FLASH_ATTN_EXT passes 5105/5105, including all 340 iq4_nl cases.
 - **Vulkan: mmid row-list prepass (MoE prefill).** Removes the redundant per-workgroup expert-ID
-  scan in `MUL_MAT_ID`. Model-dependent: large on some MoEs, small on others.
+  scan in `MUL_MAT_ID`. Model-dependent: large on some MoEs, small on others. The q5_K/q4_K scale
+  cache that used to sit alongside it is now disabled: later tile changes obsoleted it and it had
+  regressed to -4% at pp512/ub512 and -20% at pp2048/ub2048 on Q5_K-weight MoE.
 - **HIP: dequantize KV on load in the tile FA kernel (decode).** Routes quantized decode through
   the tile kernel (dequant once, batched across GQA heads) instead of the vec kernel that repeats
   the dequant per query head. Fixes quantized-KV **decode** at depth on ROCm.
 
+Two robustness changes ride along on the same branch: FA now falls back instead of aborting when
+the dequant scratch would exceed `maxStorageBufferRange` (`e21d01e`), and on discrete GPUs the
+scratch is gated on device-local capacity, with `GGML_VK_FA_DEQUANT_RESERVE_MB` to override the
+1 GiB reserve (`8a2c6b2`; a no-op on UMA parts, which includes gfx1151).
+
 ## Branches (upstreaming)
 
 Each fix is kept on its own clean, minimal branch of the llama.cpp fork so it can be reviewed and
-upstreamed independently. This toolbox stacks all of them.
+upstreamed independently. All of them are merged into `strix-halo-vulkan`, which is what the
+tarball, the container images and BUILD.md all build from — so every route carries every fix.
 
 | Branch | Fix | Status |
 |---|---|---|
-| `vulkan-coopmat1-fa-dequant-transpose` | Vulkan FA dequant-once (prefill) | in-flight PR #25494 |
+| [`vulkan-coopmat1-fa-dequant-transpose`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-coopmat1-fa-dequant-transpose) | Vulkan FA dequant-once, q8 KV (prefill) | in-flight PR #25494 |
+| [`vulkan-fa-f16-kv-contig`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-fa-f16-kv-contig) | Vulkan f16 KV contiguize before FA (prefill) | pushed; stacked on the #25494 branch, PR queued behind it |
 | [`vulkan-mmid-rowlists`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-rowlists) | mmid row-list prepass (MoE prefill) | upstream candidate, pushed |
-| `fa-tile-dequant-on-load` | HIP tile-dequant (quantized-KV decode) | public branch, testable |
+| [`feat/fa-p-hoist`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-p-hoist) | FA GEMM2 P-load hoist (prefill) | pushed 2026-07-30; strongest standalone upstream candidate of the three |
+| [`feat/fa-psh-relayout`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-psh-relayout) | FA `Psh` query-major relayout (perf-neutral alone; enables the hoist) | pushed 2026-07-30 |
+| [`feat/fa-wave32-rule`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-wave32-rule) | FA 32-wide subgroup pin (`GGML_VK_FA_WAVE32`) | pushed 2026-07-30 |
+| [`fa-tile-dequant-on-load`](https://github.com/Nathanw1014/llama.cpp/tree/fa-tile-dequant-on-load) | HIP tile-dequant (quantized-KV decode) | public branch, testable; upstream PR not yet opened |
+| [`test/fa-perf-probes`](https://github.com/Nathanw1014/llama.cpp/tree/test/fa-perf-probes) | perf-only probe cases for the FA stack | pushed 2026-07-30; tests only, no runtime change |
 
-Full inventory (combined + experimental branches) and the honest **fixes vs config-tweaks** taxonomy
-(one real fix, the rest marginal knobs): **[BRANCHES.md](BRANCHES.md)**.
+The combined branch [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan)
+merges all of the above onto upstream master `8161641` (2026-07-28). It also carries the non-native
+K/V routing fix (`8929240`) and the mmid scale-cache disable (`bfc1eb4`), neither of which has a
+standalone branch.
+
+Full inventory (combined + experimental branches) and the honest **mmid fixes vs config-tweaks**
+taxonomy (one real mmid fix, the rest marginal knobs): **[BRANCHES.md](BRANCHES.md)**.
 
 ## Quickstart
 
@@ -116,6 +159,12 @@ docker run --rm --device /dev/dri -v /path/to/models:/models -p 8080:8080 \
 ```
 
 ### Container (HIP / ROCm, decode fix)
+
+`hip/bin` is git-ignored, so `docker build -f Dockerfile.hip` fails on a fresh clone with
+`"/hip/bin": not found`. Build the `fa-tile-dequant-on-load` branch in a ROCm image first and
+populate it with `HIP_BUILD=<build-dir> ./build-from-source.sh` (see [BUILD.md](BUILD.md) §4), or
+just pull the published image instead of building.
+
 ```
 docker build -t strix-halo-llamacpp:hip -f Dockerfile.hip .
 docker run --rm --device /dev/kfd --device /dev/dri \
@@ -153,18 +202,23 @@ pass through along with `/dev/dri`).
 ## Recommended flags
 
 - `-fa 1` always (Flash-Attention on).
-- **Prefill-heavy work: use `-b 1024 -ub 1024`.** The default ubatch (512) leaves prefill on the
+- **Prefill-heavy work: use `-b 2048 -ub 2048` on Coder-30B-class MoE models** (hd128, small-expert
+  A3B; it is what the maintainer's own server runs). `ub1024` is the safer general default and what
+  the 35B wants — on that model `ub2048` measures **-12% at d0**, so this is model-specific, not a
+  blanket win. Either way the default (512) leaves prefill on the table: The default ubatch (512) leaves prefill on the
   table on MoE models. A MoE touches essentially every expert once the ubatch exceeds ~16 tokens, so
   the whole expert tensor streams regardless of batch size — which means arithmetic intensity rises
   with ubatch until it reaches this machine's compute/bandwidth balance point (~230 FLOP/byte,
   reached near ubatch 900). Measured on Coder-30B UD-Q4_K_XL, same build and driver, r=3:
   `pp2048` **1482 -> 1629 t/s at d0 (+9.9%)** and **337 -> 351 at d32768 (+4.1%)**.
-  ⚠️ Caveat: larger ubatch raises per-batch memory. On a 64 GB box with other GPU work resident
-  (e.g. ComfyUI), an over-large ubatch can lose more to GTT pressure than it gains — `ub2048` has
-  been measured degrading ~2x under co-tenancy. Use `ub1024` when you have headroom; keep `ub512`
+  ⚠️ Caveat: larger ubatch raises per-batch memory (+1.1 GiB on Coder-30B going ub1024 -> ub2048).
+  On a 64 GB box with other GPU work resident (e.g. ComfyUI) that pressure is real, though this
+  repo has no measurement of it — every benchmark here stops the co-tenants first. Keep `ub512`
   if the box is shared. Decode is unaffected either way (it is bandwidth-bound, not batch-bound).
 - **Long context: use q4_0 KV** (`-ctk q4_0 -ctv q4_0`). It is the smallest footprint (about 1/4
-  of f16) and, with these fixes, the fastest at depth for both prefill and decode. Use `q8_0` if
+  of f16) and the fastest at depth for **decode** (33.3 vs 22.5 t/s f16 @64k on Coder-30B). It is
+  not a prefill win any more: with these fixes all three KV types land within ~2.7% at every depth,
+  so pick KV type on memory and decode, not prefill. Use `q8_0` if
   you want a little more KV quality; use `f16` only for short prompts where it does not matter.
 - **mmid** MoE-prefill flags are ON by default in the Vulkan wrapper
   (`GGML_VK_MMID_ROWLISTS/SMALLN/BM64/WAVE32`). To turn them off, set any to `0` before running.
@@ -176,13 +230,16 @@ pass through along with `/dev/dri`).
 
 Measured on this box (Radeon 8060S / gfx1151), Mesa 26.3.0-devel + this build, `-fa 1`, r=3, services
 stopped, **`amd_iommu=off`** (see host tuning). "fixes" = dequant-once + q4 transpose + the mmid stack
-(the toolbox default). Start/end canaries agreed to within 0.3%, so no thermal drift.
+(the toolbox default). Start/end f16 canaries agreed to within 0.93% on prefill and 3.86% on decode, so no
+meaningful thermal drift.
 
 ![Qwen3-Coder-30B-A3B prefill: the FA fixes are 2.66x faster than stock master at 64k](graphs/01_coder30b_prefill_2.66x.png)
 
 > The 2.66x is the **build** (stock master `5c3a586` vs the FA fixes `63f88cc`), not the KV
-> type. On the fixed build all three KV types land within 1% of each other at every depth,
-> so KV quantization is no longer a prefill-speed decision on this stack.
+> type. Separately, on the 2026-07-28 contiguize build all three KV types land within 2.7% of
+> each other at every depth (worst case d4096; 0.7% at 64k), so KV quantization is no longer a
+> prefill-speed decision on this stack. Those are two different builds: `63f88cc` predates the
+> f16 contiguize pass and has no f16 arm.
 
 **Qwen3-Coder-30B-A3B (head-dim 128), prefill pp512, stock f16 vs fixes + q8 KV:**
 
@@ -190,7 +247,7 @@ stopped, **`amd_iommu=off`** (see host tuning). "fixes" = dequant-once + q4 tran
 |---:|---:|---:|---:|
 | 0 | 1163 | 1218 | +5% |
 | 16k | 377 | 505 | +34% |
-| 32k | 205 | 323 | +58% |
+| 32k | 205 | 323 | +57% |
 | 64k | 71.9 | 191 | **2.66x** |
 
 (q4 KV lands the same win at **1/4** the KV memory — 190 t/s / 2.64x at 64k — so use q4 for maximum context,
@@ -221,8 +278,12 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
 
 ## Toolchain
 
-- GPU driver: Mesa 26.3.0-devel (RADV), built with libdrm 2.4.134, shader compiler shaderc v2026.3-dev.
-- llama.cpp: recent master with the fixes applied. HIP build on ROCm 7.2.4.
+- GPU driver: Mesa 26.3.0-devel (RADV, `git-d18d598e`), libdrm 2.4.134, shaderc v2026.3-dev
+  (`49a8724d`).
+- llama.cpp: fork branch `strix-halo-vulkan`, rebased on upstream master `8161641` (2026-07-28);
+  the tarball and images are cut from its tip. The benchmark figures on this page were taken on
+  the earlier `63f88cc` (2026-07-23), so they predate the f16 contiguize pass and the 2026-07-30
+  FA stack and understate the current artifacts rather than overstate them. HIP build on ROCm 7.2.4.
 
 ## Host tuning (optional)
 
@@ -231,8 +292,8 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   toolbox. To try it: reboot, at the GRUB menu press `e`, append `amd_iommu=off` to the `linux` line,
   `Ctrl-X` (one-shot); or add it to `GRUB_CMDLINE_LINUX_DEFAULT` and `sudo update-grub` to persist. It is
   a security tradeoff (the IOMMU provides DMA isolation), so verify the effect on your box first. **Measured
-  here (off vs on, same build): ~+3–5% prefill (larger on the 35B MoE than on Coder-30B), roughly neutral
-  decode** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
+  here (off vs on, same build, 10 arms): +1.0% to +7.3% prefill (larger on the 35B MoE than on
+  Coder-30B), decode within noise at -2.4% to +3.9%** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
   taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
 
 ## Notes and caveats

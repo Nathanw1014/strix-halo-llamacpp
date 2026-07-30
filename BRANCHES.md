@@ -28,7 +28,7 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 
 | Change | What | Note |
 |---|---|---|
-| all-quant dequant-transpose (`6e2b7ea`) | extends #25494's dequant-once to q4_0/q4_1/q5_0/q5_1 | this is what makes q4 KV prefill fast; `iq4_nl` is broken (excluded), used for the q4 matrix arm |
+| all-quant dequant-transpose (`6e2b7ea`) | extends #25494's dequant-once to q4_0/q4_1/q5_0/q5_1 | this is what makes q4 KV prefill fast; shipped as `569987e`; `iq4_nl` was broken when this was written but the routing fix (`8929240`) closed that and FLASH_ATTN_EXT is now 5105/5105 including all 340 iq4_nl cases |
 
 ## mmid config flags: fixes vs tweaks
 
@@ -71,7 +71,7 @@ KV, with decode unchanged. Full matrix and caveats: the 2026-07-30 RADV-vs-ROCm 
 | Flag | Effect | Note |
 |---|---|---|
 | `GGML_VK_MMID_WAVE32` | +2.8% | required subgroup size 32. Marginal / within canary noise: shaderstats show no register spill either way; the only mechanism is VOPD dual-issue, ~1.7% of VALU slots |
-| `GGML_VK_MMID_F16B` | +2.4% | f16 B operand (halves B bytes). Model-dependent: small gain on some MoEs, neutral-to-negative on Coder-30B. An abort on the experimental `Q2_0` type has been fixed (falls back to the standard path) |
+| `GGML_VK_MMID_F16B` | +2.4% | f16 B operand (halves B bytes). Model-dependent: small gain on some MoEs, positive but within noise on Coder-30B (+1.2% d0, +0.5% d4096, +0.3% d16384). An abort on the experimental `Q2_0` type has been fixed (falls back to the standard path) |
 | `GGML_VK_MMID_TILE16` | -3.8% | NEGATIVE: shrinking BN below mean per-expert n grows A traffic |
 | `GGML_VK_MMID_INT` | -8.5% | NEGATIVE: on RDNA3.5, coopmat f16 beats scalar packed-int for these MoE shapes |
 
