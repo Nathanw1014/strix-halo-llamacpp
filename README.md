@@ -20,7 +20,7 @@ collapses while quantized KV stays fast, so the win grows with context:
 | Qwen2.5-7B-Instruct (Q4_K_M, hd128 dense) | 1353 | 329 = **+91%** | 47 | 32 = **+22%** |
 
 Values are q8 KV + fixes; the ×/% is vs stock f16 **at that depth**. At d0 the KV fix is ~parity on the hd128
-shapes (Coder 1.05x, dense 7B 1.00x) — the 35B's 1.21x at d0 is the mmid prepass, not the KV fix. The KV win is
+shapes (Coder 1.05x, dense 7B 0.99x) — the 35B's 1.21x at d0 is the mmid prepass, not the KV fix. The KV win is
 all at depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k while ours holds **191**.
 (q4 KV gives a little more decode at 1/4 the KV memory — see the charts.)
 
@@ -30,10 +30,10 @@ all at depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k whi
 |---|---|---|
 | FA dequant-once (#25494) | Vulkan | **the 2.66x** — dequantize q8 KV once in the FA kernel (prefill) |
 | all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
-| mmid row-list prepass | Vulkan | **+8.4%** MoE prefill (model-dependent; ~1–2% on Coder at depth) |
-| mmid BM64 | Vulkan | +1.3% (small waste-removal). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
-| mmid WAVE32 / F16B | Vulkan | +2.8% / +2.4% (tweaks; F16B on by default) |
-| mmid TILE16 / INT | Vulkan | −3.8% / −8.5% (documented negatives, never enabled) |
+| mmid row-list prepass | Vulkan | **+8.4%** MoE prefill on the 2026-07-14 window (q8 KV, base `b805834`); the current in-repo isolation on f16 measures +11.2% at d0 / +8.2% at d16384 (`results/finalize/rowlists_{off,on}.md`). Model-dependent; ~1–2% on Coder at depth. |
+| mmid BM64 | Vulkan | +1.3% (13.5 t/s against ±3.5 — near noise). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
+| mmid WAVE32 / F16B | Vulkan | marginal: +2.8% / +2.4%. WAVE32 sits at the ~2.5% canary drift band and its mechanism caps out ~1.7%, so treat it as noise-adjacent. F16B on by default. |
+| mmid TILE16 / INT | Vulkan | −3.8% / −8% (documented negatives, never enabled). The −8% arm is INT+SMALLN and its control carried BM64 while neither INT arm did, so part of that loss is the missing BM64; INT alone is −7.9%. |
 | HIP tile-dequant KV | HIP/ROCm | **+128% / +232%** decode @32k / 64k (beats f16) |
 | `amd_iommu=off` | host | ~+3–5% prefill (optional host tuning) |
 

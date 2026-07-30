@@ -40,13 +40,26 @@ numbers quoted in BENCHMARKS.md "hd256 stride-tax probe".
 --- Capture 2026-07-28 late (scachefix_*) ---
 Build 146fb73 = 74434c3 + 0b97626 (probe tests) + 146fb73 (mmid q5_K/q4_K scale cache DISABLED:
 it measured -4% pp512@ub512 and -20% pp2048@ub2048 on Q5_K-weight MoE vs cache-off; the deficit
-vs stock master previously in the ub2048 table was this, not base drift - stock at the stack's
-own base ff067f7 benches identical to master 8161641 on that shape).
+vs stock master previously in the ub2048 table was attributed to this rather than to base drift.
+NB that attribution rests on reasoning, not measurement: no ff067f7 bench of the 35B at ub2048
+exists on this box - the only ff067f7 llama-bench dumps are Laguna-S-2.1 ubatch runs).
 scachefix_qwen35b_*        : standard pp512 protocol, f16/q8/q4.
 ub2048_scachefix_qwen35b_* : ub2048 protocol WITH -n 32, f16/q8.
 Same box, driver, canonical glslc as above. Note the stack base is ff067f7 (2026-07-26); the
 "b10133" reference in earlier notes was a stale label from a previous rebase.
 
+
+VENDORED CAPTURE DIRECTORIES UNDER results/  (added 2026-07-30)
+  kvoff/            iommu-off re-validation (p1/p2/q8supp). Feeds README "at a glance" +
+                    charts 01-04 via scripts/make_graphs.py.
+  full-q4-results/  Qwen3.6-35B-A3B at kyuz0's exact weight quant (UD-Q4_K_XL and Q4_K_S),
+                    stock-f16 vs ceil-q4, ub1024. Feeds the "vs public data" table.
+  finalize/         per-flag mmid isolation on the final build (rowlists_off/on etc).
+                    Source of the current +11.2% d0 rowlists figure.
+  stack-ab-results/ serving-vs-bench A/B at ub512/ub1024 (canary + bench arms).
+  op-probes/        raw test-backend-ops perf + GGML_VK_PERF_LOGGER output behind the hd128
+                    and hd256 stride-tax numbers and the 72.6% FA graph share. Rescued
+                    2026-07-30 from a session scratchpad; not reproducible from scripts/.
 
 BENCHMARK ARM -> BUILD PIN  (added 2026-07-30; previously undocumented)
   ceil_* / ceilNoMmid_* / denseceil_*   = llama-fullstack @ 63f88cc (b243), the hash the

@@ -6,9 +6,28 @@ this repo is the reproducible measurement behind them, taken on the **latest** G
 and llama.cpp master so the numbers cannot be waved away as a stale toolchain.
 
 Narrative/write-ups are intentionally left out. This is a data pack: the exact toolchain is
-pinned below. Most numbers trace to a raw `llama-bench` file under `results/`; the front-page
-"at a glance" table, the ubatch recommendation, the vs-public section and charts 01-04 are fed
-by capture directories that are not yet vendored into this repo (see PROVENANCE.txt).
+pinned below. The front-page "at a glance" table, the ceiling matrix, the ubatch tables, the
+vs-public section and charts 01-05 all trace to raw `llama-bench` files vendored under
+`results/` (including `kvoff/`, `full-q4-results/`, `stack-ab-results/`, `finalize/`).
+
+These claims are **not** backed by a file in this repo:
+
+- The HIP/ROCm decode figures (fix 2). Raw `llama-bench` dumps exist outside this repo. The
+  RTX 3070 cross-vendor pair has no raw file at all; it rests on a report from the 3070 owner.
+- The two `test-backend-ops` counts (FLASH_ATTN 6000/6000, MUL_MAT_ID 790/790). Logs exist
+  outside this repo. The FLASH_ATTN_EXT gate snapshot has no surviving log at all.
+- The per-flag mmid contributions in the README table. Env-gated A/B runs recorded in branch
+  commit messages and handoff notes, not in a results file.
+- The `amd_iommu=off` figure, measured against an off-vs-on control that is not vendored.
+- The RADV-vs-ROCm figures in the "Superseded" note, from the 2026-07-30 same-head matrix.
+- The statement that stock at base `ff067f7` benches identical to master on the 35B ub2048
+  shape. No such measurement has been located; it is unverified.
+- The third-party reference points (kyuz0, strix-halo-guide, strixhalo.wiki). Other people's
+  published numbers, cited by URL; no local copy is kept.
+
+The op-level FA probes (29.8 vs 63.1 ms at hd128, 68.3 vs 152.7 ms at hd256, and the 72.6% FA
+graph share) are now vendored under `results/op-probes/`. See PROVENANCE.txt for capture
+conditions.
 
 See **[BRANCHES.md](../BRANCHES.md)** for the per-branch fix inventory (which clean branch carries which
 fix, for independent upstreaming) and the mmid config-flag taxonomy (the one real fix vs the marginal
@@ -16,7 +35,7 @@ config-tweaks).
 
 ## Charts
 
-![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k context](../graphs/01_coder30b_prefill_2.66x.png)
+![Qwen3-Coder-30B-A3B prefill: the FA fixes are 2.66x faster than stock master at 64k context](../graphs/01_coder30b_prefill_2.66x.png)
 
 ![Qwen3.6-35B-A3B Q4_K_XL, same weights: q8 KV matches/beats f16 on prefill and decode at half the KV memory, versus the best public f16 numbers](../graphs/02_35b_q4kxl_samequant.png)
 
@@ -42,7 +61,7 @@ config-tweaks).
 | Vulkan headers | 356 |
 | Shader compiler | shaderc **v2026.3-dev** (`49a8724d`) - NOT the distro's 2023.8 glslc |
 | llama.cpp (PRE) | master `fb92d8f` (2026-07-25) |
-| llama.cpp (POST) | `fb92d8f` + the 5 PR #25494 commits + `6e2b7ea` (all-quant transpose) = `d808751` |
+| llama.cpp (POST) | `d808751` = `fb92d8f` + the 5 PR #25494 commits + `6e2b7ea` (all-quant transpose) rebased onto that stack. Tagged `benchmarks-POST-d808751` in the build tree; it is reachable from no branch. |
 
 The custom Mesa is used only for these runs via `VK_ICD_FILENAMES`; the system Mesa (25.2.8)
 is left untouched. The shader-compiler pin matters: building against the 3-year-old distro
@@ -94,27 +113,40 @@ not prefill). The two are complementary, not overlapping.
 - Status: **public branch, testable now**; upstream PR not yet opened (independent of #25494, different backend).
 - Correctness: `test-backend-ops` FLASH_ATTN 6000/6000, after first closing an upstream test
   gap (quantized KV had zero coverage at head-dim 128 / gqa_ratio 8, the common real shape).
-- Measured (separate ROCm build, so read the deltas not the absolutes; rocWMMA-OFF, the
-  Lemonade llamacpp-rocm config), Qwen3-Coder-30B q8_0 tg32:
+  The receipt is from branch `reb26046-verify` (the same three commits rebased onto post-#26046
+  master `fb92d8f`), not from `fa-tile-dequant-on-load` itself.
+- Measured (separate ROCm build, so read the deltas not the absolutes; built with
+  `-DGGML_HIP_ROCWMMA_FATTN=OFF`, matching Lemonade's published llamacpp-rocm workflow at the
+  time - moot since upstream #26046 merged 2026-07-24 and deleted that path),
+  Qwen3-Coder-30B-A3B Q6_K weights, q8_0 KV, tg32:
   - d32k: 16.72 -> 38.12 (**+128%**), beats f16 (31.99) by 1.19x
-  - d64k:  8.94 -> 29.69 (**+232%**), beats f16 (21.37) by 1.39x
-  - Cross-vendor: also reproduced on an RTX 3070 (Ampere) under a forced gate: +43.9% @32k,
-    +95.7% @64k on Llama-3.2-1B, so it is not a gfx1151 quirk.
+  - d64k:  8.94 -> 29.69 (**+232%**), beats f16 (21.37 +/- 1.96) by 1.39x. That f16 comparator
+    is the only headline cell here with >2% stddev.
+  - Cross-vendor: the branch **as shipped is a no-op on tensor-core NVIDIA**. With a local
+    diagnostic patch relocating the routing condition into the turing-mma quantized branch, an
+    RTX 3070 (Ampere) shows +43.9% @32k and +95.8% @64k on Llama-3.2-1B, so the mechanism is
+    not a gfx1151 quirk. The same run shows -15% on GQA-7 Qwen2.5-7B @16k and -77% prefill
+    @32k, so the routing is not a free win on that hardware.
 
 ### 3. Vulkan: mmid grouped-GEMM row-list prepass (MoE prefill)
 
 **What it does.** `MUL_MAT_ID` (MoE expert routing) ran an O(experts x tokens) expert-ID scan
 in every workgroup. A prepass builds row lists (prefix-sum counts -> offsets -> scatter packed
-rows) so the scan happens once. That is the real fix (+8.4% end-to-end). Smaller waste-removals
+rows) so the scan happens once. That is the real fix: **+8 to +11% end-to-end, depth-dependent**
+(+11.2% at d0, +8.2% at d16384 - `results/finalize/rowlists_{off,on}.md`; an earlier
+2026-07-14 window on a different base and q8 KV measured +8.4%). Smaller waste-removals
 stack on top (scache, bm64, smalln); two knob-tweaks (wave32, f16b) are marginal-to-noise and
 kept env-gated. The kernel is DRAM-bandwidth-bound (per-expert weight streaming), so removing
 wasted work beats the wall while wave-size/tile knobs cannot.
 
 - Branch: `Nathanw1014/llama.cpp` `mmid-fullstack`. Env-gated; defaults undecided.
-- Correctness: 790/790 `MUL_MAT_ID`.
-- Measured on this stack (the ceiling matrix below, mmid isolated via env toggle), pp512:
+- Correctness: 790/790 `MUL_MAT_ID` (2026-07-16 suite, run on the system Mesa 25.2.8 - not the
+  26.3.0-devel pinned above). The suite has since grown; the current stack is 863/863.
+- Measured on this stack (the ceiling matrix below, the **mmid stack** isolated via env toggle -
+  the toggle switches `ROWLISTS+SMALLN+BM64+WAVE32` together, not rowlists alone), pp512:
   - Qwen3.6-35B-A3B: +15% at d0, tapering to +7% at 64k (the MoE-heavy model where mmid pays)
-  - Qwen3-Coder-30B-A3B: near-zero (its 128-expert/top-8 routing already fits the tiles natively)
+  - Qwen3-Coder-30B-A3B: near-zero at depth (+4% at d0, +0% at 64k); its 128-expert/top-8
+    routing already fits the tiles natively
 
 ### (experimental) all-quant dequant-transpose - extends #25494 to q4/q5
 
@@ -122,16 +154,19 @@ Commit `6e2b7ea` extends the #25494 dequant-once path to q4_0/q4_1/q5_0/q5_1 (an
 It is **not** part of PR #25494 (which is q8-only); it is included here to measure q4 **with**
 dequant-once (the `q4 dequant-once` column below) and it feeds the max-performance branch.
 
-- Correctness on the latest stack (this repo's build): FLASH_ATTN passes for
-  **f16, q8_0, q4_0, q4_1, q5_0, q5_1**; **iq4_nl is broken** (ERR=inf) and is unused/excluded.
+- Correctness on the latest stack (`strix-halo-vulkan` @ `54d76da`): FLASH_ATTN_EXT passes
+  **5105/5105**, including all 340 iq4_nl cases. iq4_nl previously failed with ERR=inf on the
+  pinned `d808751` build below; the routing fix (`8929240`) and its tests (`bb4002a`) closed that.
 
 ### 4. Vulkan: contiguize strided f16 KV before FA (GGML_VK_FA_KV_CONTIG) - prefill at depth
 
 **What it does.** The KV cache stores all heads interleaved per token, so the K/V view
 reaching Flash-Attention has each head's rows strided (256B useful out of every 1KB on
 Coder-30B). The coopmat1 kernel loads K/V tiles straight from global memory, and on that
-stride a 16x16 tile touches 16 cache lines instead of 4: the same FA op measures 29.8ms
-contiguous vs 63.1ms on the cache layout. Quantized KV never hit this because the
+stride a 16x16 tile touches 16 cache lines instead of 4: the FA op measures 29.8ms
+contiguous vs 63.1ms on the cache layout (two invocations a day apart; the hd256 pair in the
+stride-tax probe below is a single-process A/B, and both dumps are in
+`results/op-probes/`). Quantized KV never hit this because the
 dequant-once scratch (fix 1) already writes per-head-contiguous f16 as a side effect; f16 KV
 skipped that path and was the only format still paying the strided loads. This fix routes
 strided f16 K/V through the same scratch via a pure copy shader (no dequant), engaged only
@@ -153,21 +188,26 @@ FLASH_ATTN_EXT failures (ERR=inf, excluded from the correctness gate above) esca
 types are forced through the dequant-once path and supports_op mirrors every hard gate so
 admission and dispatch always agree.
 
-- Scope: correctness only, no perf claims; commit `1abdd92` on `strix-halo-vulkan`.
-- Status: fix landed on the branch; test cases land with the ongoing iq4_nl investigation.
+- Scope: correctness only, no perf claims; commit `8929240` on `strix-halo-vulkan`
+  (`1abdd92` resolves only in the archived `strix-halo-vulkan-ff067f7`).
+- Status: fix and test cases both landed (`8929240`, `bb4002a`); FLASH_ATTN_EXT is 5105/5105.
 - Caveat: upstream master `8161641` ("vulkan: add iq4_nl support back to FA", #24585, 2026-07-28)
   touches the same area and must be reconciled before any upstream submission.
 
 ## Correctness gate (this stack)
 
-`test-backend-ops -o FLASH_ATTN_EXT` on the POST build, Mesa 26.3.0-devel, v2026.3-dev glslc:
-all f16 / q8_0 / q4_0 / q4_1 / q5_0 / q5_1 cases pass; only the experimental iq4_nl type fails
-(known-broken, not used by any arm here).
+`test-backend-ops -o FLASH_ATTN_EXT` on the POST build (2026-07-26, v2026.3-dev glslc): all
+f16 / q8_0 / q4_0 / q4_1 / q5_0 / q5_1 cases pass; 84 iq4_nl cases fail (not used by any arm
+here). **Superseded:** on the current `strix-halo-vulkan` tip the suite is 5105/5105 with
+iq4_nl green - see fix 5. The backing artifact for this snapshot does not name the driver, so
+it is not attributed to a specific Mesa build.
 
 ## The matrix
 
-Both models are A3B MoE. Qwen3-Coder-30B-A3B = Q6_K_XL, head-dim 128, gqa 8.
-Qwen3.6-35B-A3B = Q5_K_XL, head-dim 256, gqa 8. All values t/s, r=3.
+Both models are A3B MoE. Qwen3-Coder-30B-A3B = Q6_K_XL, head-dim 128, gqa 8, a pure
+transformer. Qwen3.6-35B-A3B = Q5_K_XL, head-dim 256, gqa 8, and a **gated-delta-net hybrid:
+only 10 of its 40 blocks run attention at all**, so FA work is diluted roughly 4x on that
+model - which is why its curves differ in shape, not only in head-dim. All values t/s, r=3.
 "post"/"deq-once" = dequant-once ON; "pre"/"base" = OFF (plain master). Start-vs-end f16
 canary: prefill within 0.8% at every depth; decode within 0.5% except d0 (+2.3%) and d16384 (-1.8%).
 
@@ -348,8 +388,10 @@ Everything above uses the ub512 protocol for comparability with the public corpu
 physical batch default (`-ub 512`) leaves real prefill on the table on Strix with MoE models:
 at ub512 each of Coder-30B's 128 experts sees only ~32 rows per ubatch, and the expert GEMMs
 are dominated by streaming weights in. At ub2048 each expert gets ~128 rows and the same
-weight traffic feeds 4x the work. Cost is ~1.6 GiB of extra GTT for the larger compute
-buffers, which a 64 GiB+ Strix box does not notice.
+weight traffic feeds 4x the work. Cost is extra GTT for the larger compute buffers: measured
+**+1.1 GiB on Coder-30B going ub1024 -> ub2048**, which a 64 GiB+ Strix box does not notice.
+(The ub512 -> ub2048 delta has never been measured on this model. An earlier `~1.6 GiB` figure
+here was Laguna-S-2.1 117B UD-Q3_K_XL, a ~50 GiB model, and did not belong in this paragraph.)
 
 **Recommendation: run `-b 2048 -ub 2048` on Strix Halo for Coder-30B-class MoE models**
 (hd128, small-expert A3B; it is the config the maintainer's own server runs). Isolated at the
@@ -384,10 +426,14 @@ slower at depth than rocWMMA-off and should not be used as the comparison point.
 
 > **Superseded for RADV-vs-ROCm claims.** This column pairs two builds from different upstream
 > heads. The 2026-07-30 matrix runs both backends from the same head (`8161641`) under a
-> stabilized protocol, and there the depth deficit is gone: it belonged to the pre-FA-stack
-> build (RADV stock trails ROCm by 10-15% at d8192-d32768), while with the stack RADV leads at
-> every depth by +3.0 to +4.4% and by +14% at d0, on all three KV types. Prefer that matrix for
-> any RADV-vs-ROCm statement; this column is kept because graph 05 is drawn from it.
+> stabilized protocol. There, **on Coder-30B**, the shipped stack (`bb4002a` - what the v0.1
+> tarball and the container carry) still trails ROCm by 10-15% at d8192-d32768; the four FA
+> changes committed 2026-07-30 (`e11cafa`, `40f85eb`, `dfb619c`) close that and lead ROCm by
+> +3.0 to +4.4% at those depths and by +14% at d0, on all three KV types. **On the 35B, ROCm
+> still leads d0 by ~5.6%**, d8192 is a tie, and RADV leads only from d16384. So a
+> build-from-source reader gets the leading arm; a tarball or container reader does not yet.
+> Prefer that matrix for any RADV-vs-ROCm statement; this column is kept because graph 05 is
+> drawn from it.
 
 ### Prefill pp2048 @ ub2048 - Qwen3.6-35B-A3B (and the scale-cache regression)
 
@@ -403,9 +449,9 @@ An earlier capture on build `74434c3` (`ub2048_contig_qwen35b_*`, kept in result
 stock master AHEAD 0.91x at shallow depth here. That deficit was initially suspected to be
 base drift and turned out to be a regression in this stack: the mmid q5_K scale cache
 (added 2026-07-14 as a win) had been obsoleted by later tile changes and measured -20% on
-this model at ub2048 and -4% at the standard protocol. Build `146fb73` disables it (base
-drift was exonerated by measurement: stock at the stack's own base `ff067f7` benches
-identical to current master on this shape). With that fix the stack leads stock master on
+this model at ub2048 and -4% at the standard protocol. Build `146fb73` disables it. (Base
+drift was ruled out on reasoning, not on a measurement of this shape - no `ff067f7` bench of
+the 35B at ub2048 exists, so treat that step as unverified.) With that fix the stack leads stock master on
 the 35B at every depth and both protocols. tg32 unchanged throughout, and measured
 ubatch-invariant (58.0 @ ub2048 vs 58.7 @ ub512, same build). Raw: `results/ub2048_scachefix_qwen35b_*`,
 `results/ub2048_prepr_qwen35b_f16.md`.
@@ -423,16 +469,25 @@ today's master.
 
 The op-level strided-load tax is NOT hd128-specific: at 35B-class geometry (hd256, 4 KV
 heads, kv=10240, nb=2048) the FA op measures 68.3 ms contiguous vs 152.7 ms on the cache
-layout (2.24x; hd128 measures 2.1x). The model-level difference between Coder-30B (2.63x
-end-to-end) and the 35B (+11% at depth) is FA's share of the graph - 72.6% at depth on the
-tiny-FFN A3B Coder vs far less on the 35B - not kernel immunity at hd256.
+layout (2.24x; hd128 measures 2.1x). Raw: `results/op-probes/hd256-probe.txt`, a single-process
+A/B. The model-level difference between Coder-30B (2.63x end-to-end) and the 35B (+11% at
+depth) is FA's share of the graph, not kernel immunity at hd256: FA is **72.6%** of the
+pp2048@d8192 graph on the tiny-FFN A3B Coder (`results/op-probes/vk-perflog.txt`, measured
+with the mmid stack on and contiguize off). The 35B share was **not measured**; it is expected
+to be far lower because only 10 of its 40 blocks run attention.
 
 ## vs public data
 
 The public Strix Halo corpus DOES report depth (correcting an earlier assumption) - but almost all of it
-runs **f16 KV**. The cleanest public reference is kyuz0/amd-strix-halo-toolboxes (single box, raw JSON, f16
-KV). To compare cleanly we ran the SAME model at kyuz0's exact weight quant (Qwen3.6-35B-A3B UD-Q4_K_XL), so
+runs **f16 KV**. The cleanest public reference is kyuz0/amd-strix-halo-toolboxes (single box, raw JSON).
+To compare cleanly we ran the SAME model at kyuz0's exact weight quant (Qwen3.6-35B-A3B UD-Q4_K_XL), so
 the only variables are KV type + our fixes, not weights.
+
+> **KV-type caveat on every third-party number in this section.** Neither kyuz0's schema nor the
+> strixhalo.wiki page records a KV cache type. "f16 KV" for their runs is inferred from the
+> `llama-bench` default, not stated by the source. The kyuz0 figures quoted below are their
+> **RADV** column specifically (their matrix also carries ROCm 7.2, ROCm 6.4, ROCm-nightly and
+> AMDVLK).
 
 **Same box, same weights (UD-Q4_K_XL), stock f16 KV vs fixes + q4 KV (pp2048 / tg32, ub1024):**
 
@@ -449,19 +504,25 @@ Honest read: **+12% prefill and +18% decode vs stock f16 at matched weights, 1/4
 win cross-validates against public data. The prefill figure is the same-box A/B: our f16 prefill baseline
 sits a bit below kyuz0's (a build/driver gap), so we do not claim a cross-box prefill win. Independent
 corroboration that quant-KV beats f16 on decode at depth: the `strix-halo-guide` filled_kv_decode.csv
-(35B @64k: f16 41.4 vs q4_0 51.3).
+(35B @64k: f16 41.4 vs q4_0 51.3). Read that one as directional only - it is a different box
+(Beelink GTR9 Pro, build b9010), different weights (UD-Q4_K_M, not Q4_K_XL) and a different
+metric (`llama-server` eval_tps over n_predict=128, not a `llama-bench` tg32 point). The same
+rows also show q4_0 with the slower total wall time (89.97s vs 73.52s) and lower prefill
+(750.0 vs 931.9), which is the tradeoff this comparison omits.
 
 The **2.6x prefill** figure is a *separate* claim: our own f16 -> quant on Qwen3-Coder-30B-A3B (hd128,
 where dequant-once is strongest). There is no clean public depth counterpart for that model/config, so it
 stands on the same-box pre/post above, not on a public comparison.
 
-kyuz0 numbers: https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/results.json (build b9187, f16 KV, -fa).
+kyuz0 numbers: https://github.com/kyuz0/amd-strix-halo-toolboxes/blob/main/docs/results.json (RADV column, `-fa`;
+the fetched meta lists builds b9187 and b9193 and the 35B rows do not say which, and record no KV type).
 
 ### 128k deep context — vs strixhalo.wiki (2026-07-26, iommu-off)
 
-`strixhalo.wiki/AI/llamacpp-performance` publishes a Qwen3-30B-A3B (Q4_K_XL, **f16 KV**) run at `d130560`
+`strixhalo.wiki/AI/llamacpp-performance` publishes a Qwen3-30B-A3B (Q4_K_XL) run at `d130560`
 (~128k) — the deepest public gfx1151 point. We ran our Coder-30B-A3B (same 30B-A3B class, hd128; heavier
-Q6_K weights) at the exact same depth:
+Q6_K weights) at the exact same depth. The wiki page states "KV Cache: Not explicitly specified",
+so the f16 label below is the `llama-bench` default inferred, not their claim:
 
 **Prefill pp512 @ 128k (d130560):**
 
@@ -473,7 +534,8 @@ Q6_K weights) at the exact same depth:
 | ours, stock | f16 | 28.4 | our baseline |
 | **ours, + fixes** | **q4 / q8** | **102.8 / 102.5** | — |
 
-**Decode tg @ 128k:** wiki RADV f16 12.5 / ROCm-tuned 13.3 → ours q4 **22.5** (~+70% over their best).
+**Decode tg @ 128k:** wiki RADV 12.5 / ROCm-tuned 13.3 → ours q4 **22.5**. Not a like-for-like
+ratio: the wiki column is **tg128** and ours is **tg32**, so no percentage is quoted here.
 
 Full 128k curve (this box, iommu-off):
 
