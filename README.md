@@ -202,15 +202,18 @@ pass through along with `/dev/dri`).
 ## Recommended flags
 
 - `-fa 1` always (Flash-Attention on).
-- **Prefill-heavy work: use `-b 2048 -ub 2048` on Coder-30B-class MoE models** (hd128, small-expert
-  A3B; it is what the maintainer's own server runs). `ub1024` is the safer general default and what
-  the 35B wants — on that model `ub2048` measures **-12% at d0**, so this is model-specific, not a
-  blanket win. Either way the default (512) leaves prefill on the table: The default ubatch (512) leaves prefill on the
-  table on MoE models. A MoE touches essentially every expert once the ubatch exceeds ~16 tokens, so
-  the whole expert tensor streams regardless of batch size — which means arithmetic intensity rises
-  with ubatch until it reaches this machine's compute/bandwidth balance point (~230 FLOP/byte,
-  reached near ubatch 900). Measured on Coder-30B UD-Q4_K_XL, same build and driver, r=3:
-  `pp2048` **1482 -> 1629 t/s at d0 (+9.9%)** and **337 -> 351 at d32768 (+4.1%)**.
+- **Prefill-heavy work: raise the ubatch. Which value is model-specific.**
+  The default (512) leaves prefill on the table on MoE models: a MoE touches essentially every
+  expert once the ubatch exceeds ~16 tokens, so the whole expert tensor streams regardless of
+  batch size, and arithmetic intensity keeps rising with ubatch until it reaches this machine's
+  compute/bandwidth balance point (~230 FLOP/byte).
+  - **Coder-30B-class MoE (hd128, small-expert A3B): `-b 2048 -ub 2048`.** This is what the
+    maintainer's own server runs. Isolated at the same prompt length, ub2048 is worth **+39%**
+    over ub512 at d0 (`pp2048` 1170 -> 1631). Going ub512 -> ub1024 alone is +9.9% at d0
+    (1482 -> 1629 on UD-Q4_K_XL) and +4.1% at d32768, so most of the win is in the last step.
+  - **Qwen3.6-35B-class (hd256 hybrid): `-b 1024 -ub 1024`.** ub2048 measures **-12% at d0** on
+    that model (1180 -> 1035), so it is not a blanket win. ub2048 only pays there for
+    deep-context work.
   ⚠️ Caveat: larger ubatch raises per-batch memory (+1.1 GiB on Coder-30B going ub1024 -> ub2048).
   On a 64 GB box with other GPU work resident (e.g. ComfyUI) that pressure is real, though this
   repo has no measurement of it — every benchmark here stops the co-tenants first. Keep `ub512`
