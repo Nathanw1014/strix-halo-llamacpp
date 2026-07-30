@@ -1,0 +1,12 @@
+[08:57:48] === serving stack vs benchmark stack, Coder-30B Q4_K_XL ===
+[08:57:48] stop services
+[08:57:58] === A_serving_ub512 (A: fa-pr + system Mesa, no mmid) ===
+[08:59:59]   ok
+[09:00:24] === B_bench_ub512 (B: build-ceil + mesa-main + mmid) ===
+[09:01:55]   ok
+[09:02:20] === B_bench_ub1024 (B: build-ceil + mesa-main + mmid) ===
+[09:03:46]   ok
+[09:04:11] === A_serving_canary (A: fa-pr + system Mesa, no mmid) ===
+[09:06:00]   ok
+[09:06:25] === DONE ===
+[09:06:25] restore

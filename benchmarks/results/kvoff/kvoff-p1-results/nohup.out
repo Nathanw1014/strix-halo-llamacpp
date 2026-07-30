@@ -1,0 +1,48 @@
+[07:39:26] === IOMMU-OFF Phase1 (0-32k) ===
+[07:39:26] cmdline: BOOT_IMAGE=/vmlinuz-6.17.0-35-generic root=/dev/mapper/ubuntu--vg-ubuntu--lv ro amdgpu.gttsize=59392 ttm.pages_limit=15204352 ttm.page_pool_size=15204352 amd_iommu=off
+[07:39:26] iommu_groups: 0 (0=iommu off)
+[07:39:26] BASE=5c3a586 CEIL=efa4428
+[07:39:26] stop services
+[07:39:34] === canary0 / coder30b / f16 ===
+[07:42:22]   ok
+[07:42:37] === base / coder30b / f16 ===
+[07:45:12]   ok
+[07:45:27] === base / coder30b / q4 ===
+[07:47:56]   ok
+[07:48:11] === base / coder30b / q8 ===
+[07:50:40]   ok
+[07:50:55] === ceilNoMmid / coder30b / q4 ===
+[07:52:55]   ok
+[07:53:10] === ceilNoMmid / coder30b / q8 ===
+[07:55:12]   ok
+[07:55:27] === ceil / coder30b / q4 ===
+[07:57:25]   ok
+[07:57:40] === ceil / coder30b / q8 ===
+[07:59:39]   ok
+[07:59:54] === base / qwen35b / f16 ===
+[08:01:40]   ok
+[08:01:55] === base / qwen35b / q4 ===
+[08:03:29]   ok
+[08:03:44] === base / qwen35b / q8 ===
+[08:05:16]   ok
+[08:05:31] === ceilNoMmid / qwen35b / q4 ===
+[08:06:57]   ok
+[08:07:12] === ceilNoMmid / qwen35b / q8 ===
+[08:08:37]   ok
+[08:08:52] === ceil / qwen35b / q4 ===
+[08:10:09]   ok
+[08:10:24] === ceil / qwen35b / q8 ===
+[08:11:42]   ok
+[08:11:57] === MoE matrix DONE (publishable) ===
+[08:11:57] === stock / q4kxl / f16 ===
+[08:14:34]   ok
+[08:14:49] === ceil / q4kxl / q4 ===
+[08:16:02]   ok
+[08:16:17] === densestock / dense7b / f16 ===
+[08:18:01]   ok
+[08:18:16] === denseceil / dense7b / q4 ===
+[08:19:41]   ok
+[08:19:56] === canary1 / coder30b / f16 ===
+[08:22:47]   ok
+[08:23:02] === IOMMU-OFF Phase1 DONE ===
+[08:23:02] restore

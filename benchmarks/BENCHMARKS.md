@@ -5,8 +5,10 @@ AMD Strix Halo (gfx1151 / RDNA3.5). Each fix is independent and upstreamable on 
 this repo is the reproducible measurement behind them, taken on the **latest** GPU driver
 and llama.cpp master so the numbers cannot be waved away as a stale toolchain.
 
-Narrative/write-ups are intentionally left out. This is a data pack: every number traces
-to a raw `llama-bench` file under `results/`, and the exact toolchain is pinned below.
+Narrative/write-ups are intentionally left out. This is a data pack: the exact toolchain is
+pinned below. Most numbers trace to a raw `llama-bench` file under `results/`; the front-page
+"at a glance" table, the ubatch recommendation, the vs-public section and charts 01-04 are fed
+by capture directories that are not yet vendored into this repo (see PROVENANCE.txt).
 
 See **[BRANCHES.md](../BRANCHES.md)** for the per-branch fix inventory (which clean branch carries which
 fix, for independent upstreaming) and the mmid config-flag taxonomy (the one real fix vs the marginal
@@ -359,7 +361,7 @@ unaffected by ubatch either way (tg32 58.3 @ ub2048 vs 57.3 @ ub512, same build 
 `results/ub2048_contig_qwen35b_f16.md`). Prompts shorter than the ubatch are one chunk
 either way and see no difference.
 
-![Production config -ub 2048: prefill vs depth for f16/q8/q4 KV, all three overlapping, with ROCm reference](../graphs/05_coder30b_ub2048_kvtypes.png)
+![Production config -ub 2048: prefill vs depth for f16/q8/q4 KV, all three overlapping. The ROCm reference is in the table below, not plotted](../graphs/05_coder30b_ub2048_kvtypes.png)
 
 ### Prefill pp2048 @ ub2048 (t/s) - Qwen3-Coder-30B-A3B, build 74434c3
 

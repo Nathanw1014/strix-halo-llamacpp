@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import re, os, matplotlib
+HERE=os.path.dirname(os.path.abspath(__file__))
+GRAPHS=os.path.join(HERE,"..","..","graphs")
+os.makedirs(GRAPHS,exist_ok=True)
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -39,7 +42,8 @@ def style(ax):
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x,_: f"{int(x/1024)}k" if x>=1024 else "0"))
     ax.set_xlabel("context depth (tokens)")
 
-P1="/home/alloy/kvoff-p1-results"; P2="/home/alloy/kvoff-p2-results"; P3="/home/alloy/kvoff-q8supp-results"
+RES=os.path.join(HERE,"..","results","kvoff")
+P1=os.path.join(RES,"kvoff-p1-results"); P2=os.path.join(RES,"kvoff-p2-results"); P3=os.path.join(RES,"kvoff-q8supp-results")
 def parseM(name):  # merge Phase 1 (0-32k) + Phase 2 (0,64k) + q8 supplement per arm; iommu-off canonical
     d=parse(f"{P1}/{name}"); d.update(parse(f"{P2}/{name}")); d.update(parse(f"{P3}/{name}")); return d
 # q8 is the featured reference quant (shipping-PR scope, higher KV quality, same win as q4)
@@ -51,17 +55,17 @@ d_f16=parseM("densestock_dense7b_f16.md"); d_q8=parseM("denseceil_dense7b_q8.md"
 # ---- Chart 1: Coder-30B prefill headline (2.66x) ----
 fig,ax=plt.subplots(figsize=(9,5.2))
 ds,y1=curve(c_f16,"pp"); _,y8=curve(c_q8,"pp")
-ax.plot(ds,y1,"o-",color=F16,lw=2.6,ms=7,label="f16 KV (stock)")
-ax.plot(ds,y8,"o-",color=FIX,lw=2.8,ms=7,label="q8 KV + fixes")
+ax.plot(ds,y1,"o-",color=F16,lw=2.6,ms=7,label="stock master 5c3a586, f16 KV")
+ax.plot(ds,y8,"o-",color=FIX,lw=2.8,ms=7,label="FA fixes 63f88cc, q8 KV")
 r=y8[-1]/y1[-1]
 ax.annotate(f"{r:.2f}x\nfaster",(ds[-1],y8[-1]),xytext=(-70,-4),textcoords="offset points",
     color=FIX,fontweight="bold",fontsize=15,ha="center",
     arrowprops=dict(arrowstyle="->",color=FIX,lw=1.6))
-ax.set_title("Quantized KV prefill is 2.66x faster than f16 at 64k context")
+ax.set_title("The FA fixes make prefill 2.66x faster at 64k (vs stock master)")
 ax.set_ylabel("prefill throughput (tok/s)"); style(ax)
 ax.legend(facecolor=BG,edgecolor=GRID,labelcolor=FG,loc="upper right")
 fig.text(.5,.012,"Qwen3-Coder-30B-A3B (Q6_K, head-dim 128) | "+FOOT,ha="center",color=MUT,fontsize=8.2)
-fig.tight_layout(rect=[0,.04,1,1]); fig.savefig("/home/alloy/graphs/01_coder30b_prefill_2.66x.png"); plt.close(fig)
+fig.tight_layout(rect=[0,.04,1,1]); fig.savefig(os.path.join(GRAPHS,"01_coder30b_prefill_2.66x.png")); plt.close(fig)
 
 # ---- Chart 2: 35B Q4_K_XL same-quant (prefill + decode) + kyuz0 decode overlay ----
 fig,(a1,a2)=plt.subplots(1,2,figsize=(13,5.4))
@@ -79,7 +83,7 @@ a2.set_title("Decode  (+15% at 64k, vs f16)"); a2.set_ylabel("decode tok/s (tg32
 a2.legend(facecolor=BG,edgecolor=GRID,labelcolor=FG)
 fig.suptitle("Same weights, half the KV memory: q8 KV wins both halves at depth",fontsize=16,fontweight="bold")
 fig.text(.5,.012,"Qwen3.6-35B-A3B (UD-Q4_K_XL, head-dim 256) | our stock-f16 matches kyuz0's published f16 (decode) | "+FOOT,ha="center",color=MUT,fontsize=7.6)
-fig.tight_layout(rect=[0,.04,1,.96]); fig.savefig("/home/alloy/graphs/02_35b_q4kxl_samequant.png"); plt.close(fig)
+fig.tight_layout(rect=[0,.04,1,.96]); fig.savefig(os.path.join(GRAPHS,"02_35b_q4kxl_samequant.png")); plt.close(fig)
 
 # ---- Chart 3: decode both models, f16 vs q4 ----
 fig,ax=plt.subplots(figsize=(9,5.2))
@@ -90,7 +94,7 @@ ax.set_title("Quantized KV also generates faster than f16 at depth")
 ax.set_ylabel("decode throughput (tok/s)"); style(ax)
 ax.legend(facecolor=BG,edgecolor=GRID,labelcolor=FG,ncol=2)
 fig.text(.5,.012,"f16 KV (dashed) vs q8 KV + fixes (solid); q8 = shipping-PR scope + higher quality, same win as q4 | "+FOOT,ha="center",color=MUT,fontsize=7.8)
-fig.tight_layout(rect=[0,.04,1,1]); fig.savefig("/home/alloy/graphs/03_decode_both.png"); plt.close(fig)
+fig.tight_layout(rect=[0,.04,1,1]); fig.savefig(os.path.join(GRAPHS,"03_decode_both.png")); plt.close(fig)
 
 # ---- Chart 4: dense-7B f16 vs q8 (the FA dequant-once fix is not MoE-specific) ----
 fig,(a1,a2)=plt.subplots(1,2,figsize=(13,5.4))
@@ -106,8 +110,8 @@ a2.set_title(f"Decode  (+{y2[-1]/y1[-1]*100-100:.0f}% at 64k)"); a2.set_ylabel("
 a2.legend(facecolor=BG,edgecolor=GRID,labelcolor=FG)
 fig.suptitle("Dense model too: Qwen2.5-7B — the FA dequant-once fix is not MoE-specific",fontsize=15,fontweight="bold")
 fig.text(.5,.012,"Qwen2.5-7B-Instruct Q4_K_M (dense, head-dim 128) | "+FOOT,ha="center",color=MUT,fontsize=7.8)
-fig.tight_layout(rect=[0,.04,1,.96]); fig.savefig("/home/alloy/graphs/04_dense7b_f16_vs_q8.png"); plt.close(fig)
+fig.tight_layout(rect=[0,.04,1,.96]); fig.savefig(os.path.join(GRAPHS,"04_dense7b_f16_vs_q8.png")); plt.close(fig)
 
 print("wrote:")
 import os
-for f in sorted(os.listdir("/home/alloy/graphs")): print("  /home/alloy/graphs/"+f, os.path.getsize("/home/alloy/graphs/"+f)//1024,"KB")
+for f in sorted(os.listdir(GRAPHS)): print("  ", os.path.join(GRAPHS, f))

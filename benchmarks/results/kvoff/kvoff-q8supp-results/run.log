@@ -1,0 +1,9 @@
+[10:26:33] === q8 supplementary (iommu-off) ===
+[10:26:33] iommu_groups: 0 (0=off)
+[10:26:33] stop services
+[10:26:41] === denseceil / dense7b / q8 ===
+[10:29:57]   ok
+[10:30:12] === ceil / q4kxl / q8 ===
+[10:32:44]   ok
+[10:32:59] === q8 SUPP DONE ===
+[10:32:59] restore

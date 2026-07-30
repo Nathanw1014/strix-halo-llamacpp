@@ -30,7 +30,7 @@ little more decode at 1/4 the KV memory — see the charts.)
 | FA dequant-once (#25494) | Vulkan | **the 2.66x** — dequantize q8 KV once in the FA kernel (prefill) |
 | all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
 | mmid row-list prepass | Vulkan | **+8.4%** MoE prefill (model-dependent; ~1–2% on Coder at depth) |
-| mmid scache / BM64 | Vulkan | +1.67% / +1.3% (small waste-removals) |
+| mmid BM64 | Vulkan | +1.3% (small waste-removal). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
 | mmid WAVE32 / F16B | Vulkan | +2.8% / +2.4% (tweaks; F16B on by default) |
 | mmid TILE16 / INT | Vulkan | −3.8% / −8.5% (documented negatives, never enabled) |
 | HIP tile-dequant KV | HIP/ROCm | **+128% / +232%** decode @32k / 64k (beats f16) |
@@ -173,7 +173,11 @@ Measured on this box (Radeon 8060S / gfx1151), Mesa 26.3.0-devel + this build, `
 stopped, **`amd_iommu=off`** (see host tuning). "fixes" = dequant-once + q4 transpose + the mmid stack
 (the toolbox default). Start/end canaries agreed to within 0.3%, so no thermal drift.
 
-![Qwen3-Coder-30B-A3B prefill: quantized KV is 2.66x faster than f16 at 64k](graphs/01_coder30b_prefill_2.66x.png)
+![Qwen3-Coder-30B-A3B prefill: the FA fixes are 2.66x faster than stock master at 64k](graphs/01_coder30b_prefill_2.66x.png)
+
+> The 2.66x is the **build** (stock master `5c3a586` vs the FA fixes `63f88cc`), not the KV
+> type. On the fixed build all three KV types land within 1% of each other at every depth,
+> so KV quantization is no longer a prefill-speed decision on this stack.
 
 **Qwen3-Coder-30B-A3B (head-dim 128), prefill pp512, stock f16 vs fixes + q8 KV:**
 

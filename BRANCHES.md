@@ -20,7 +20,7 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 
 | Branch | Contents | Use |
 |---|---|---|
-| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `442d7df`/`3957182`) + non-native K/V type routing (`1abdd92`) + scale-cache disable (`146fb73`, the scache had regressed), rebased on upstream **`8161641`** (2026-07-28 master; previous ff067f7-based tip archived as `strix-halo-vulkan-ff067f7`) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `b1a10f9`/`9019eb4`) + non-native K/V type routing (`8929240`) + scale-cache disable (the scache had regressed) + the 2026-07-30 FA stack (`e11cafa` P-load hoist, `40f85eb` Psh relayout, `dfb619c` wave32 pin), rebased on upstream **`8161641`** (2026-07-28 master; pre-rebase tip archived as `strix-halo-vulkan-ff067f7`, where the older `442d7df`/`3957182`/`1abdd92`/`146fb73` hashes still resolve) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
 | `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
 | `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 
@@ -37,14 +37,34 @@ knob hoping the same work runs faster. On this kernel the fixes won and the twea
 bottleneck is **DRAM bandwidth** (per-expert weight streaming): removing wasted work beats the wall,
 wave-size/tile knobs cannot.
 
+### 2026-07-30 flash-attention stack (pushed, stacked branches)
+
+Each isolates one change; they are stacked because the relayout edits the line the hoist adds.
+All are merged into `strix-halo-vulkan` (tip `54d76da`).
+
+| Branch | Commit | What it does | Measured (Coder-30B, pp2048, ub2048) |
+|---|---|---|---|
+| [`feat/fa-p-hoist`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-p-hoist) | `e11cafa` | hoists the GEMM2 P coopMatLoad out of the hsv_tile loop | +6.9 / +8.1 / +9.2% at d8k / 16k / 32k |
+| [`feat/fa-psh-relayout`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-psh-relayout) | `40f85eb` | stores Psh query-major so the GEMM2 A load vectorizes; also fixes the host shmem estimator | perf-neutral by design (LDS 16384 -> 15360 B) |
+| [`feat/fa-wave32-rule`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-wave32-rule) | `dfb619c` | pins a 32-wide subgroup where narrowing is free (reduces to hsv <= 128 on a 64-wide device); `GGML_VK_FA_WAVE32=1` | +2.7 / +9.1 / +11.5 / +11.9% on top of the hoist |
+| [`test/fa-perf-probes`](https://github.com/Nathanw1014/llama.cpp/tree/test/fa-perf-probes) | `54d76da` | perf-only probe cases (head sizes, KV-head counts, quant KV, delta-net, MoE tiles) | n/a |
+
+Combined: +2.8 to +3.1% at d0 rising to +21.6 to +22.0% at d32768, consistent across f16/q8_0/q4_0
+KV, with decode unchanged. Full matrix and caveats: the 2026-07-30 RADV-vs-ROCm data pack.
+
 ### Fixes (remove wasted work)
 
 | Flag | Gain | What it removes |
 |---|---|---|
-| `GGML_VK_MMID_ROWLISTS` | **+8.4%** | THE fix. Prefix-sum over per-expert counts -> offsets -> scatter packed rows, so the O(experts x tokens) expert-ID scan runs once instead of per workgroup |
-| scache (compile-time) | +1.67% | drops redundant per-iteration scale re-extraction via a shared-memory cache (q4_K/q5_K) |
+| `GGML_VK_MMID_ROWLISTS` | **+8 to +11%** (depth-dependent) | THE fix. Prefix-sum over per-expert counts -> offsets -> scatter packed rows, so the O(experts x tokens) expert-ID scan runs once instead of per workgroup |
 | `GGML_VK_MMID_BM64` | +1.3% | 64x32 tile halves redundant B L2 re-reads |
 | `GGML_VK_MMID_SMALLN` | ~0% alone | fixes tile-occupancy waste at small per-expert n; only visible once ROWLISTS unmasks it (stacks) |
+
+### Reverted / obsoleted
+
+| Flag | Status | Why |
+|---|---|---|
+| scache (compile-time) | **disabled in the shipped build** | Once measured at +1.67%, but later tile changes obsoleted it and it regressed to -4% at the standard protocol and -20% on Q5_K-weight MoE at ub2048. Disabled; its +1.67% is not part of any current number. |
 
 ### Config-tweaks (change a knob; marginal or negative here)
 
@@ -61,5 +81,5 @@ wave-size/tile knobs cannot.
 small gain on some MoEs like the 35B, neutral elsewhere; disable with `GGML_VK_MMID_F16B=0`).
 `TILE16` and `INT` are documented negatives, never enabled.
 
-Honest one-liner: **one real fix (rowlists) plus small waste-removals (scache/bm64/smalln); the
+Honest one-liner: **one real fix (rowlists) plus small waste-removals (bm64/smalln); the
 knob-tweaks are marginal-to-negative, as expected on a bandwidth-bound kernel.**

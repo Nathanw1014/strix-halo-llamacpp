@@ -46,3 +46,24 @@ scachefix_qwen35b_*        : standard pp512 protocol, f16/q8/q4.
 ub2048_scachefix_qwen35b_* : ub2048 protocol WITH -n 32, f16/q8.
 Same box, driver, canonical glslc as above. Note the stack base is ff067f7 (2026-07-26); the
 "b10133" reference in earlier notes was a stale label from a previous rebase.
+
+
+BENCHMARK ARM -> BUILD PIN  (added 2026-07-30; previously undocumented)
+  ceil_* / ceilNoMmid_* / denseceil_*   = llama-fullstack @ 63f88cc (b243), the hash the
+                                          llama-bench banner stamps into every ceil_*.md here
+  base_* / stock_* / densestock_* / canary* = llama-base5c @ 5c3a586
+
+  WARNING: benchmarks/scripts/ceil_build.sh does `rm -rf build-ceil` and rebuilds from
+  whatever HEAD llama-fullstack is on. build-ceil has since been rebuilt to 54d76da
+  (2026-07-30), so re-running the shipped recipe today does NOT reproduce the ceil arm --
+  it silently substitutes a much newer binary under the same arm name. Check out 63f88cc
+  explicitly, or read the `build:` line inside each raw results/ file, which is authoritative.
+
+  Forensic check for "is this binary pre- or post- the 2026-07-30 FA stack":
+    strings <build>/bin/libggml-vulkan.so* | grep -c GGML_VK_FA_WAVE32
+    0 = pre-stack, 1 = post-stack.
+
+SUPERSEDED BY A BETTER-CONTROLLED MEASUREMENT
+  The RADV-vs-ROCm prefill comparison in this pack predates the 2026-07-30 matrix, which runs
+  BOTH backends from the same upstream head (8161641) under a stabilized protocol at r=3.
+  For any RADV-vs-ROCm claim, prefer that matrix.

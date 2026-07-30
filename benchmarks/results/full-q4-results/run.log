@@ -1,0 +1,11 @@
+[02:26:15] stop services
+[02:26:23] === Q4_K_S / stock f16 (mmid off) ===
+[02:30:11]   ok
+[02:30:26] === Q4_K_S / ceiling q4 (mmid on) ===
+[02:33:39]   ok
+[02:33:54] === Q4_K_XL / stock f16 (mmid off) ===
+[02:37:41]   ok
+[02:37:56] === Q4_K_XL / ceiling q4 (mmid on) ===
+[02:41:23]   ok
+[02:41:38] === FULL Q4 DONE ===
+[02:41:38] restore
