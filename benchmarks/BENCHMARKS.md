@@ -349,8 +349,10 @@ longer needs rescuing. Same protocol, same driver as the ceiling runs; raw dumps
 | 32768 | 198.98 | 325.88 | +64% | 322.63 | 322.32 |
 | 65536 | 70.64 | 190.03 | **+169% (2.69x)** | 191.28 | 189.87 |
 
-All three KV types now land within 1% of each other at every depth: **KV quantization is no
-longer a prefill-speed decision on this stack**, only a memory / decode-bandwidth one. Decode
+All three KV types now land within 2.7% of each other at every depth (worst case d4096, where
+f16 919.89 leads q4 895.91 by 2.7%; the spread is 1.3% at d0 and 0.7% at 64k): **KV
+quantization is no longer a prefill-speed decision on this stack**, only a memory /
+decode-bandwidth one. Decode
 is untouched by design: every tg32 delta vs the published tables is neutral-to-positive and
 within +4% (largest: q4 @d65536 +4.0%, q8 @d16384 +3.2%, q8 @d32768 +3.2%) - the same build
 drift discussed below, not a decode change (`contig_*` files include the tg32 rows). The small

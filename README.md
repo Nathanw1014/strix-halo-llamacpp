@@ -10,8 +10,8 @@ The measurements behind these fixes (matrices, methodology, raw data) live in th
 ## Speedups at a glance
 
 **q8 KV + fixes vs stock f16** (this box, `amd_iommu=off`, pp512 / tg32 t/s, measured). The fix doesn't speed up
-short prompts — at d0 quantized KV ≈ f16 (nothing to dequantize yet). Its value is at **depth**, where stock f16
-collapses while quantized KV stays fast, so the win grows with context:
+short prompts — at d0 quantized KV ≈ f16 (nothing to dequantize yet). Its value is at **depth**, where the stock
+build collapses while the fixed build stays fast, so the win grows with context:
 
 | Model (arch) | Prefill d0 | Prefill 64k | Decode d0 | Decode 64k |
 |---|---:|---:|---:|---:|
@@ -24,12 +24,22 @@ shapes (Coder 1.05x, dense 7B 0.99x) — the 35B's 1.21x at d0 is the mmid prepa
 all at depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k while ours holds **191**.
 (q4 KV gives a little more decode at 1/4 the KV memory — see the charts.)
 
+**Read that as a build comparison, not a KV-type one.** The baseline is stock master at f16, and the fixed
+build reaches 191 with q8 KV and **190 with f16 KV**, because the f16 contiguize pass removes the same
+collapse on the f16 path. All three KV types land within 2.7% of each other at every depth (worst case
+d4096; 0.7% at 64k), so on this stack **KV quantization is no longer a prefill-speed decision**. Keep
+`-ctk q8_0 -ctv q8_0` anyway: it still buys KV memory and decode throughput at depth (the +38% decode at
+64k in the table above is the KV type, since the Vulkan fixes are prefill-only). See
+[f16 catches up](benchmarks/BENCHMARKS.md#f16-catches-up-the-kv-contig-fix-2026-07-28-build-74434c3).
+
 **What each fix contributes:**
 
 | Fix / knob | Backend | Contribution |
 |---|---|---|
 | FA dequant-once (#25494) | Vulkan | **the 2.66x** — dequantize q8 KV once in the FA kernel (prefill) |
 | all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
+| f16 KV contiguize | Vulkan | **2.63x** f16 prefill at depth (Coder-30B pp512 @64k: 70.6 to 190.0 vs master `8161641`). f16 KV only, prefill only, on by default (`GGML_VK_FA_KV_CONTIG=0` opts out). It contributes nothing to the q8 headline above; it is what makes the f16 line match it. |
+| FA prefill stack (P-hoist / `Psh` relayout / wave32) | Vulkan | +2.8 to +3.1% at d0 rising to **+21.6 to +22.0%** at d32768 on Coder-30B, consistent across f16/q8/q4 KV, decode unchanged. P-hoist alone +6.9/+8.1/+9.2% at d8k/16k/32k; the wave32 pin adds a further +2.7 to +11.9% on top, rising with depth; the `Psh` relayout measures ~0 on its own and rides along as the enabler for the vectorized GEMM2 A load. |
 | mmid row-list prepass | Vulkan | **+8.4%** MoE prefill on the 2026-07-14 window (q8 KV, base `b805834`); the current in-repo isolation on f16 measures +11.2% at d0 / +8.2% at d16384 (`results/finalize/rowlists_{off,on}.md`). Model-dependent; ~1–2% on Coder at depth. |
 | mmid BM64 | Vulkan | +1.3% (13.5 t/s against ±3.5 — near noise). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
 | mmid WAVE32 / F16B | Vulkan | marginal. WAVE32 +2.8%, but its mechanism caps out ~1.7%, so treat it as noise-adjacent. F16B is quoted at +2.4% from an unvendored model; the only in-repo isolation (Coder-30B) measures +1.2% at d0. On by default. |
@@ -37,7 +47,9 @@ all at depth: e.g. Coder-30B prefill, stock f16 collapses to **72 t/s** @64k whi
 | HIP tile-dequant KV | HIP/ROCm | **+128% / +232%** decode @32k / 64k (beats f16) |
 | `amd_iommu=off` | host | +1.0–7.3% prefill, decode within noise (optional host tuning) |
 
-Honest read: on Coder the **FA dequant-once fix is essentially the entire prefill win**; `rowlists` is the
+Honest read: on Coder the **q8 prefill headline is almost entirely FA dequant-once**, with the 2026-07-30 FA
+stack adding roughly a fifth more at depth. The f16 contiguize is a win of comparable size on the f16 line,
+which is why KV type is no longer a prefill-speed decision here. `rowlists` is the
 real MoE-prefill fix (larger on other shapes); the rest are small waste-removals and the knob-tweaks are
 marginal-to-negative — as expected on a bandwidth-bound kernel. Full per-depth matrices + charts are below
 and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
