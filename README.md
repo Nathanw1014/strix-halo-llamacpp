@@ -120,8 +120,9 @@ scratch is gated on device-local capacity, with `GGML_VK_FA_DEQUANT_RESERVE_MB` 
 
 ## Branches (upstreaming)
 
-Five of the fixes are genuine llama.cpp upstream candidates: each is kept on its own clean,
-minimal branch so it can be reviewed and merged on its own, independent of this toolbox.
+Five of the fixes — plus one community-contributed feature — are genuine llama.cpp upstream
+candidates: each is kept on its own clean, minimal branch so it can be reviewed and merged on
+its own, independent of this toolbox.
 
 | Branch | Fix | Upstream status |
 |---|---|---|
@@ -130,10 +131,11 @@ minimal branch so it can be reviewed and merged on its own, independent of this 
 | [`vulkan-mmid-rowlists`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-rowlists) | mmid row-list prepass (MoE prefill) | ready; clean cherry-pick onto master |
 | [`feat/fa-p-hoist`](https://github.com/Nathanw1014/llama.cpp/tree/feat/fa-p-hoist) | FA GEMM2 P-load hoist (prefill) | ready, wants a second vendor first — it is unconditional and benefits every KHR-coopmat device, but the win depends on the driver unrolling the loop, and cm1 is shared with NVIDIA pre-Blackwell, Intel and AMD-Windows |
 | [`fa-tile-dequant-on-load`](https://github.com/Nathanw1014/llama.cpp/tree/fa-tile-dequant-on-load) | HIP tile-dequant (quantized-KV decode) | ready; PR not yet opened |
+| [`vulkan-dsv4-lightning-indexer`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-dsv4-lightning-indexer) | DeepSeek V4: Vulkan lightning-indexer kernels (scalar + coopmat prefill + decode) and indexed sparse FA — **contributed by Gaetan Puleo**, hardened + parity tests added here | ready; PR not yet opened |
 
 **Not offered upstream, though they ship here.** The combined branch
 [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) merges the
-five above onto upstream master `8161641` (2026-07-28) plus four changes that are deliberately
+six above onto upstream master `8161641` (2026-07-28) plus four changes that are deliberately
 local:
 
 - `feat/fa-wave32-rule` (`dfb619c`) — the FA subgroup pin. There is real precedent for it (the
@@ -314,6 +316,16 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   here (off vs on, same build, 10 arms): +1.0% to +7.3% prefill (larger on the 35B MoE than on
   Coder-30B), decode within noise at -2.4% to +3.9%** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
   taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
+
+## Credits
+
+- **Gaetan Puleo** — the DeepSeek V4 Vulkan work: lightning-indexer kernels (scalar + coopmat
+  prefill + decode variants) and the indexed sparse flash-attention path, contributed as a draft
+  against this toolbox's branch and integrated 2026-08-01 with hardening and parity tests added
+  during review. Their original branch is preserved verbatim at
+  [`dsv4-flash-vulkan-poc`](https://github.com/Nathanw1014/llama.cpp/tree/dsv4-flash-vulkan-poc);
+  the clean upstream-candidate cut is
+  [`vulkan-dsv4-lightning-indexer`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-dsv4-lightning-indexer).
 
 ## Notes and caveats
 

@@ -16,15 +16,16 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 | `fa-tile-dequant-on-load` | dequantize KV on load in the tile FA kernel, route quantized decode there (decode) | HIP / CUDA | public branch, testable now; upstream PR not yet opened |
 | `vulkan-fa-f16-kv-contig` | contiguize strided f16 KV before FA (the f16 counterpart of the dequant-once transpose; 2.63x pp @ 64k vs stock master) | Vulkan | stacked on the #25494 branch (extends its scratch infra); PR queued behind #25494 |
 | `feat/fa-p-hoist` | hoist the GEMM2 P `coopMatLoad` out of the `hsv_tile` loop (prefill) | Vulkan | ready; unconditional and 8 insertions in one file, but wants a second vendor first (the win depends on the driver unrolling the loop, and cm1 is shared with NVIDIA pre-Blackwell / Intel / AMD-Windows) |
+| `vulkan-dsv4-lightning-indexer` | DeepSeek V4 lightning-indexer kernels (scalar + coopmat, prefill + decode) and indexed sparse FA — contributed by Gaetan Puleo, hardened + parity tests added during integration | Vulkan | upstream candidate (clean cherry-pick onto master; PR not yet opened) |
 
-Those five are the whole upstream set. Everything below ships in the combined branch but is
+Those six are the whole upstream set. Everything below ships in the combined branch but is
 **not** offered upstream — see the per-item reasons in the 2026-07-30 section and the README.
 
 ## Combined / max-performance branches
 
 | Branch | Contents | Use |
 |---|---|---|
-| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `b1a10f9`/`9019eb4`) + non-native K/V type routing (`8929240`) + scale-cache disable (the scache had regressed) + the 2026-07-30 FA stack (`e11cafa` P-load hoist, `40f85eb` Psh relayout, `dfb619c` wave32 pin) + `0b29b30` all perf env gates **default-on** (opt-out `=0`), rebased on upstream **`8161641`** (2026-07-28 master; pre-rebase tip archived as `strix-halo-vulkan-ff067f7`, where the older `442d7df`/`3957182`/`1abdd92`/`146fb73` hashes still resolve) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
+| [`strix-halo-vulkan`](https://github.com/Nathanw1014/llama.cpp/tree/strix-halo-vulkan) | #25494 + all-quant transpose + mmid + F16B fix + f16 KV contiguize (on by default, `b1a10f9`/`9019eb4`) + non-native K/V type routing (`8929240`) + scale-cache disable (the scache had regressed) + the 2026-07-30 FA stack (`e11cafa` P-load hoist, `40f85eb` Psh relayout, `dfb619c` wave32 pin) + `0b29b30` all perf env gates **default-on** (opt-out `=0`) + the DeepSeek V4 Vulkan lightning indexer / sparse FA (`890550c`+`43c8cd2`, contributed by Gaetan Puleo), rebased on upstream **`8161641`** (2026-07-28 master; pre-rebase tip archived as `strix-halo-vulkan-ff067f7`, where the older `442d7df`/`3957182`/`1abdd92`/`146fb73` hashes still resolve) | **the complete Vulkan stack behind the toolbox — build from source here.** Verified: FLASH_ATTN_EXT gate green for f16/q8/q4/q4_1/q5_0/q5_1; iq4_nl routing fix landed, full validation pending; Coder-30B f16 @64k 2.63x vs stock master |
 | `strix-halo-fa-fixes` | #25494 + HIP tile-dequant | both-backends branch (points Strix Halo users at both fixes) |
 | `mmid-fullstack` | earlier cut of the Vulkan stack, older upstream base | superseded by `strix-halo-vulkan` |
 
