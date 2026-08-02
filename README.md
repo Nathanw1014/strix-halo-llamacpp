@@ -244,6 +244,9 @@ Vulkan image is published.
   - **Qwen3.6-35B-class (hd256 hybrid): `-b 1024 -ub 1024`.** ub2048 measures **-12% at d0** on
     that model (1180 -> 1035), so it is not a blanket win. ub2048 only pays there for
     deep-context work.
+  - **DeepSeek-V4-Flash (284B-A13B, 128GB boxes): `-ub 1024`.** Community-measured: pp4096
+    146.6 -> 184.3 (**+26%**) over the 512 default at d0. Decode is unaffected (single-token
+    graphs), so this is pure prefill upside.
   ⚠️ Caveat: larger ubatch raises per-batch memory (+1.1 GiB on Coder-30B going ub1024 -> ub2048).
   On a 64 GB box with other GPU work resident (e.g. ComfyUI) that pressure is real, though this
   repo has no measurement of it — every benchmark here stops the co-tenants first. Keep `ub512`
