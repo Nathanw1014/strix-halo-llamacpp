@@ -113,14 +113,23 @@ jobs:
         run: |
           set -euo pipefail
           docker build -t strix-halo-llamacpp:vulkan -f Dockerfile.vulkan .
-          # --version must run, report the commit we built, and resolve every shared lib.
-          # (No GPU here: this catches packaging breakage, not perf/correctness regressions.)
-          docker run --rm strix-halo-llamacpp:vulkan llama-cli --version 2>&1 | tee /tmp/ver
-          grep -F "$SHORT" /tmp/ver
+          P=/opt/strix-halo-llamacpp/vulkan
+          # Static checks first — they never execute payload code, which targets Zen 5 ISA
+          # the runner may not have. The built commit must be embedded, and every shared lib
+          # must resolve under the wrapper's LD_LIBRARY_PATH.
+          docker run --rm strix-halo-llamacpp:vulkan bash -c "grep -qa $SHORT $P/bin/*"
           docker run --rm strix-halo-llamacpp:vulkan \
-            bash -c 'LD_LIBRARY_PATH=/opt/strix-halo-llamacpp/vulkan/driver:/opt/strix-halo-llamacpp/vulkan/bin \
-              ldd /opt/strix-halo-llamacpp/vulkan/bin/llama-server /opt/strix-halo-llamacpp/vulkan/driver/libvulkan_radeon.so' | tee /tmp/ldd
+            bash -c "LD_LIBRARY_PATH=$P/driver:$P/bin ldd $P/bin/llama-server $P/driver/libvulkan_radeon.so" | tee /tmp/ldd
           if grep 'not found' /tmp/ldd; then exit 1; fi
+          # Exec smoke only when this runner can actually run the payload's ISA: loading
+          # libggml-cpu executes AVX-512(+BF16) code, so a Zen 3 EPYC runner SIGILLs (exit 132)
+          # on a perfectly good build. Gate on the strictest flag we enable.
+          if grep -qm1 avx512_bf16 /proc/cpuinfo; then
+            docker run --rm strix-halo-llamacpp:vulkan llama-cli --version 2>&1 | tee /tmp/ver
+            grep -F "$SHORT" /tmp/ver
+          else
+            echo "runner CPU lacks avx512_bf16 — exec smoke skipped, static checks passed"
+          fi
 
       - name: push dev images to ghcr
         env:
