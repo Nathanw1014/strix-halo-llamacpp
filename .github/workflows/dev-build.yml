@@ -147,17 +147,6 @@ jobs:
             echo "runner CPU lacks avx512_bf16 — exec smoke skipped, static checks passed"
           fi
 
-      - name: push dev images to ghcr
-        env:
-          TAG: ${{ needs.check.outputs.tag }}
-        run: |
-          set -euo pipefail
-          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for t in vulkan-dev "vulkan-$TAG"; do
-            docker tag strix-halo-llamacpp:vulkan "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
-            docker push "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
-          done
-
       - name: create dev prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -167,6 +156,11 @@ jobs:
           SUBJECT: ${{ needs.check.outputs.subject }}
         run: |
           set -euo pipefail
+          # idempotent: a force re-run (e.g. to retry the image push) keeps the existing release
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — leaving it in place"
+            exit 0
+          fi
           prev=$(gh release list --limit 40 --json tagName --jq '[.[].tagName | select(startswith("dev-"))][0] // empty')
           {
             echo "Automated dev build of [\`$LLAMA_REPO@strix-halo-vulkan\`](https://github.com/$LLAMA_REPO/tree/strix-halo-vulkan) at [\`$SHORT\`](https://github.com/$LLAMA_REPO/commit/$SHA) — $SUBJECT"
@@ -188,3 +182,14 @@ jobs:
             --title "$TAG — llama.cpp strix-halo-vulkan@$SHORT" \
             --notes-file /tmp/notes.md \
             strix-halo-llamacpp-vulkan-portable.tar.gz MANIFEST.txt
+      - name: push dev images to ghcr
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for t in vulkan-dev "vulkan-$TAG"; do
+            docker tag strix-halo-llamacpp:vulkan "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
+            docker push "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
+          done
+
