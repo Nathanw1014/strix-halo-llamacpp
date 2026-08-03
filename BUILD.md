@@ -87,3 +87,42 @@ tar czf strix-halo-llamacpp-vulkan-portable.tar.gz vulkan README.md   # the rele
 ./push-images.sh             # images to ghcr.io (auth + usage in the script header)
 gh release create v0.1 strix-halo-llamacpp-vulkan-portable.tar.gz
 ```
+
+## 7. Automated dev builds (CI)
+
+[`.github/workflows/dev-build.yml`](.github/workflows/dev-build.yml) watches the fork's
+`strix-halo-vulkan` branch (polled every 2 hours) and, for each new commit, runs steps 1–5
+clean-room on a GitHub runner via [`ci/build-payload.sh`](ci/build-payload.sh) — the same
+script is runnable locally in a plain `ubuntu:24.04` container after
+[`ci/install-deps.sh`](ci/install-deps.sh). Each build produces:
+
+- a **prerelease** tagged `dev-<commit-date>-<sha7>` with the portable tarball + MANIFEST
+- container tags `ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev` (rolling) and
+  `:vulkan-dev-<date>-<sha7>` (pinned)
+
+The **stable channel is untouched**: `:vulkan`, `:hip` and the v0.x releases remain hand-cut
+from validated on-box builds. Dev builds are compile- and packaging-tested only (the runner
+has no gfx1151), so promotion to stable stays a manual, benchmark-gated step.
+
+CI-specific deltas from the local recipe, all in `ci/build-payload.sh`:
+
+- **mesa/libdrm/shaderc are pinned** (`MESA_REF` / `LIBDRM_REF` / `SHADERC_REF` in the workflow
+  env, defaulted in the script) to the exact versions the validated stack was built with. Bump
+  them deliberately — the bundled RADV and the shader compiler are part of the validated stack.
+  The pinned toolchain build is cached, so routine runs only rebuild llama.cpp.
+- **`glslc` is built from source at the pin** — the LunarG noble repo resolves `glslc` to the
+  distro shaderc 2023.8, exactly the compiler the toolchain notes above rule out. The SDK repo
+  is still used for current Vulkan/SPIRV headers.
+- **`-march=znver5` replaces `GGML_NATIVE=ON`** — native on a cloud runner would tune for the
+  runner's CPU, not Strix Halo (Zen 5, gcc-14).
+
+Trigger a build immediately (e.g. right after pushing to the fork):
+
+```
+gh workflow run dev-build -R Nathanw1014/strix-halo-llamacpp -f force=true
+```
+
+Optional instant push-trigger: add a tiny workflow to the fork branch that fires
+`repository_dispatch` (event `llama-push`, `client_payload.ref` = the pushed sha) at this
+repo, authenticated with a PAT stored in the fork's secrets — the dev-build workflow already
+listens for it. Until then, the 2-hour poll picks pushes up on its own.

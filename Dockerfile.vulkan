@@ -1,7 +1,8 @@
 FROM ubuntu:24.04
 LABEL com.github.containers.toolbox="true" \
       org.opencontainers.image.title="strix-halo-llamacpp-vulkan" \
-      org.opencontainers.image.description="llama.cpp Vulkan/RADV for Strix Halo (gfx1151), FA + MoE-prefill fixes, bundled Mesa 26.3"
+      org.opencontainers.image.description="llama.cpp Vulkan/RADV for Strix Halo (gfx1151), FA + MoE-prefill fixes, bundled Mesa 26.3" \
+      org.opencontainers.image.source="https://github.com/Nathanw1014/strix-halo-llamacpp"
 # runtime deps for the bundled RADV, plus a distrobox/toolbox-friendly base so `enter` works offline
 # libdrm-common supplies /usr/share/libdrm/amdgpu.ids, the GPU marketing-name table the
 # bundled libdrm looks up at that exact path. Without it every run prints

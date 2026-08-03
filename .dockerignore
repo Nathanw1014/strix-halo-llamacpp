@@ -1,0 +1,9 @@
+# keep the image build context to the payload dirs — without this, CI's _work build tree
+# (multi-GB) and the git history get shipped to the docker daemon on every build
+.git
+_work
+_toolchain-cache
+_ccache
+*.tar.gz
+benchmarks
+graphs

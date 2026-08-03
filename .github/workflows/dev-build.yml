@@ -1,0 +1,165 @@
+# Automated dev builds: watch the fork's strix-halo-vulkan branch and, on a new commit,
+# rebuild the Vulkan payload, push dev container tags, and cut a `dev-<date>-<sha7>`
+# prerelease with the portable tarball. Curated, benchmark-validated releases stay the
+# hand-cut v0.x line; this pipeline never touches the stable `:vulkan` image tag.
+#
+# Triggers:
+#   - schedule: polls the branch tip every 2 hours (a no-change poll is a ~10s job)
+#   - workflow_dispatch: manual, with optional ref override and force-rebuild
+#   - repository_dispatch (llama-push): optional instant trigger from the fork, see BUILD.md
+name: dev-build
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      llama_ref:
+        description: 'llama.cpp ref to build (branch or commit)'
+        default: strix-halo-vulkan
+        required: false
+      force:
+        description: 'rebuild even if this commit already has a dev release'
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [llama-push]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: false
+
+env:
+  LLAMA_REPO: Nathanw1014/llama.cpp
+  # pins for the bundled driver + shader compiler — bump deliberately, they are part of the
+  # validated stack (the distro glslc is explicitly NOT acceptable, see BUILD.md)
+  MESA_REF: d18d598e275d1ab4634381c5414affe1319af6b1   # mesa main 2026-07-25, shipped in v0.4
+  LIBDRM_REF: libdrm-2.4.133
+  SHADERC_REF: 49a8724d561c13db22b52f99f2a0e2707a9a9e3c  # shaderc v2026.3-dev, same as the box
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      sha: ${{ steps.decide.outputs.sha }}
+      short: ${{ steps.decide.outputs.short }}
+      tag: ${{ steps.decide.outputs.tag }}
+      subject: ${{ steps.decide.outputs.subject }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.llama_ref || github.event.client_payload.ref || 'strix-halo-vulkan' }}
+          FORCE: ${{ inputs.force && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          IFS=$'\t' read -r sha date subject < <(gh api "repos/$LLAMA_REPO/commits/$REF" \
+            --jq '[.sha, (.commit.committer.date | split("T")[0]), (.commit.message | split("\n")[0])] | @tsv')
+          short=${sha:0:7}
+          tag="dev-$(echo "$date" | tr -d -)-$short"
+          build=true
+          if [ "$FORCE" != true ] && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "tag $tag already exists — nothing new to build"
+            build=false
+          fi
+          {
+            echo "build=$build"
+            echo "sha=$sha"
+            echo "short=$short"
+            echo "tag=$tag"
+            echo "subject=$subject"
+          } >> "$GITHUB_OUTPUT"
+          echo "$REF @ $short ($subject) -> build=$build tag=$tag"
+
+  build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install toolchain
+        run: sudo ci/install-deps.sh
+
+      # glslc + mesa + libdrm only rebuild when the pins move; otherwise this restores in seconds
+      - name: cache toolchain (glslc + mesa + libdrm)
+        uses: actions/cache@v4
+        with:
+          path: _toolchain-cache
+          key: toolchain-${{ env.MESA_REF }}-${{ env.LIBDRM_REF }}-${{ env.SHADERC_REF }}-noble-v1
+
+      - name: cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-vk-${{ needs.check.outputs.sha }}
+          restore-keys: ccache-vk-
+
+      - name: build payload
+        env:
+          LLAMA_REF: ${{ needs.check.outputs.sha }}
+          TOOLCHAIN_CACHE_DIR: ${{ github.workspace }}/_toolchain-cache
+        run: ci/build-payload.sh
+
+      - name: build + smoke-test container
+        env:
+          SHORT: ${{ needs.check.outputs.short }}
+        run: |
+          set -euo pipefail
+          docker build -t strix-halo-llamacpp:vulkan -f Dockerfile.vulkan .
+          # --version must run, report the commit we built, and resolve every shared lib.
+          # (No GPU here: this catches packaging breakage, not perf/correctness regressions.)
+          docker run --rm strix-halo-llamacpp:vulkan llama-cli --version 2>&1 | tee /tmp/ver
+          grep -F "$SHORT" /tmp/ver
+          docker run --rm strix-halo-llamacpp:vulkan \
+            bash -c 'LD_LIBRARY_PATH=/opt/strix-halo-llamacpp/vulkan/driver:/opt/strix-halo-llamacpp/vulkan/bin \
+              ldd /opt/strix-halo-llamacpp/vulkan/bin/llama-server /opt/strix-halo-llamacpp/vulkan/driver/libvulkan_radeon.so' | tee /tmp/ldd
+          if grep 'not found' /tmp/ldd; then exit 1; fi
+
+      - name: push dev images to ghcr
+        env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for t in vulkan-dev "vulkan-$TAG"; do
+            docker tag strix-halo-llamacpp:vulkan "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
+            docker push "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
+          done
+
+      - name: create dev prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          SHA: ${{ needs.check.outputs.sha }}
+          SHORT: ${{ needs.check.outputs.short }}
+          SUBJECT: ${{ needs.check.outputs.subject }}
+        run: |
+          set -euo pipefail
+          prev=$(gh release list --limit 40 --json tagName --jq '[.[].tagName | select(startswith("dev-"))][0] // empty')
+          {
+            echo "Automated dev build of [\`$LLAMA_REPO@strix-halo-vulkan\`](https://github.com/$LLAMA_REPO/tree/strix-halo-vulkan) at [\`$SHORT\`](https://github.com/$LLAMA_REPO/commit/$SHA) — $SUBJECT"
+            echo
+            echo "> Compile-tested and container-smoke-tested only; CI has no gfx1151, so no benchmark or correctness validation ran. Benchmark-validated releases are the v0.x line."
+            echo
+            if [ -n "$prev" ]; then
+              prevsha=${prev##*-}
+              echo "Changes since \`$prev\`: https://github.com/$LLAMA_REPO/compare/$prevsha...$SHORT"
+              echo
+            fi
+            echo "Images: \`ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev\` (rolling) / \`:vulkan-$TAG\` (pinned)"
+            echo
+            echo '```'
+            cat MANIFEST.txt
+            echo '```'
+          } > /tmp/notes.md
+          gh release create "$TAG" --prerelease \
+            --title "$TAG — llama.cpp strix-halo-vulkan@$SHORT" \
+            --notes-file /tmp/notes.md \
+            strix-halo-llamacpp-vulkan-portable.tar.gz MANIFEST.txt
