@@ -87,15 +87,18 @@ jobs:
       - name: install toolchain
         run: sudo ci/install-deps.sh
 
-      # glslc + mesa + libdrm only rebuild when the pins move; otherwise this restores in seconds
-      - name: cache toolchain (glslc + mesa + libdrm)
-        uses: actions/cache@v4
+      # glslc + mesa + libdrm only rebuild when the pins move; otherwise this restores in
+      # seconds. Explicit restore/save (not plain actions/cache) so the ~1h toolchain build
+      # is saved right after it succeeds — a failure in a LATER step must not throw it away.
+      - name: restore toolchain cache (glslc + mesa + libdrm)
+        id: tc-cache
+        uses: actions/cache/restore@v4
         with:
           path: _toolchain-cache
           key: toolchain-${{ env.MESA_REF }}-${{ env.LIBDRM_REF }}-${{ env.SHADERC_REF }}-noble-v1
 
-      - name: cache ccache
-        uses: actions/cache@v4
+      - name: restore ccache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ccache
           key: ccache-vk-${{ needs.check.outputs.sha }}
@@ -106,6 +109,19 @@ jobs:
           LLAMA_REF: ${{ needs.check.outputs.sha }}
           TOOLCHAIN_CACHE_DIR: ${{ github.workspace }}/_toolchain-cache
         run: ci/build-payload.sh
+
+      - name: save toolchain cache
+        if: steps.tc-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _toolchain-cache
+          key: toolchain-${{ env.MESA_REF }}-${{ env.LIBDRM_REF }}-${{ env.SHADERC_REF }}-noble-v1
+
+      - name: save ccache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-vk-${{ needs.check.outputs.sha }}
 
       - name: build + smoke-test container
         env:
