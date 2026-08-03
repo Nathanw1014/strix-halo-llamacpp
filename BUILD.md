@@ -113,8 +113,10 @@ CI-specific deltas from the local recipe, all in `ci/build-payload.sh`:
 - **`glslc` is built from source at the pin** — the LunarG noble repo resolves `glslc` to the
   distro shaderc 2023.8, exactly the compiler the toolchain notes above rule out. The SDK repo
   is still used for current Vulkan/SPIRV headers.
-- **`-march=znver5` replaces `GGML_NATIVE=ON`** — native on a cloud runner would tune for the
-  runner's CPU, not Strix Halo (Zen 5, gcc-14).
+- **explicit Zen 5 ISA toggles replace `GGML_NATIVE=ON`** (`GGML_AVX512*`/`GGML_AVX_VNNI`) —
+  native on a cloud runner would tune for the runner's CPU, not Strix Halo, and a global
+  `-march=znver5` SIGILLs llama.cpp's build-time host tools on the runner. The toggles scope
+  the target ISA to the ggml CPU backend only.
 
 Trigger a build immediately (e.g. right after pushing to the fork):
 

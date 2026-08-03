@@ -92,12 +92,16 @@ LLAMA_SHA="$(git -C "$WORK/llama.cpp" rev-parse HEAD)"
 LLAMA_SUBJECT="$(git -C "$WORK/llama.cpp" log -1 --format=%s)"
 
 # BUILD.md #3, with one CI adaptation: GGML_NATIVE=ON on a cloud runner would tune for the
-# runner's CPU, so pin the real target instead (Strix Halo = Zen 5; znver5 needs gcc >= 14).
+# runner's CPU, so target Strix Halo (Zen 5) explicitly via ggml's per-backend ISA toggles.
+# NOT a global -march=znver5: that also compiles build-time HOST tools (llama-ui-embed,
+# vulkan-shaders-gen), which execute on the runner and SIGILL on non-Zen5 CPUs. The toggles
+# scope the target ISA to the ggml CPU-backend objects; host tools stay runner-generic.
 CCACHE_ARGS=()
 command -v ccache >/dev/null && CCACHE_ARGS=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 cmake -S "$WORK/llama.cpp" -B "$WORK/llama.cpp/build-vk" -G Ninja \
     -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 \
-    -DCMAKE_C_FLAGS=-march=znver5 -DCMAKE_CXX_FLAGS=-march=znver5 \
+    -DGGML_AVX512=ON -DGGML_AVX512_VBMI=ON -DGGML_AVX512_VNNI=ON -DGGML_AVX512_BF16=ON \
+    -DGGML_AVX_VNNI=ON \
     -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF \
     -DVulkan_INCLUDE_DIR=/usr/include \
     -DVulkan_GLSLC_EXECUTABLE="$TC/glslc" \
