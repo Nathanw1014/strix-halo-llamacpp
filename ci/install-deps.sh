@@ -17,7 +17,7 @@ apt-get update
 
 apt-get install -y --no-install-recommends \
     vulkan-sdk \
-    build-essential gcc-14 g++-14 cmake ninja-build ccache git curl \
+    build-essential gcc-14 g++-14 cmake ninja-build ccache git curl patchelf \
     pkg-config bison flex \
     python3 python3-pip python3-setuptools python3-mako python3-yaml \
     zlib1g-dev libzstd-dev libexpat1-dev

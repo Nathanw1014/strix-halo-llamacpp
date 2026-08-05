@@ -64,6 +64,52 @@ printf '{\n    "file_format_version": "1.0.1",\n    "ICD": {\n        "api_versi
     "$API_VERSION" > "$HERE/vulkan/driver/radeon_icd.x86_64.json"
 echo "   ICD api_version=$API_VERSION (from $(basename "$SRC_ICD"))"
 
+# ---- release gate: no build-machine paths in the payload --------------------------------
+# BUILD.md documented all of this and it still shipped wrong in v0.1/v0.3/v0.4, so it is
+# enforced here - the one place both the manual and the CI build go through.
+echo "== gate: build-machine paths =="
+
+# 1. amdgpu.ids. The lookup path is COMPILED INTO libdrm_amdgpu (BUILD.md #1), so a libdrm
+# built with a local prefix bakes in a path that does not exist on a user's box and every
+# run reports it. Hard failure: a payload like that is not shippable.
+IDS_WANT="/usr/share/libdrm/amdgpu.ids"
+for so in "$HERE"/vulkan/driver/libdrm_amdgpu.so.1.*; do
+    [ -f "$so" ] || continue
+    ids="$(strings -a "$so" | grep -m1 '/amdgpu\.ids$' || true)"
+    if [ "$ids" != "$IDS_WANT" ]; then
+        echo "ERROR: $(basename "$so") looks up amdgpu.ids at '${ids:-<none found>}'," >&2
+        echo "       not $IDS_WANT. LIBDRM_DIR points at a libdrm built with a local prefix." >&2
+        echo "       Rebuild libdrm with --prefix=/usr and DESTDIR-stage it (BUILD.md #1)." >&2
+        exit 1
+    fi
+done
+echo "   amdgpu.ids -> $IDS_WANT"
+
+# 2. RPATH/RUNPATH. Binaries copied out of a build tree carry that tree's absolute path.
+# Harmless at runtime (_run sets LD_LIBRARY_PATH, which is searched before DT_RUNPATH) but it
+# publishes the build machine's directory layout. Rewrite to $ORIGIN so the payload still
+# resolves its own libraries when a binary under bin/ is run without the wrapper.
+if ! command -v patchelf >/dev/null; then
+    echo "ERROR: patchelf not found; cannot scrub build-tree RPATHs (apt install patchelf)." >&2
+    exit 1
+fi
+scrubbed=0
+while IFS= read -r f; do
+    head -c4 "$f" | grep -q ELF || continue
+    rp="$(patchelf --print-rpath "$f" 2>/dev/null || true)"
+    case "$rp" in
+        ""|'$ORIGIN') continue ;;
+    esac
+    patchelf --set-rpath '$ORIGIN' "$f"
+    scrubbed=$((scrubbed + 1))
+done < <(find "$HERE/vulkan/bin" "$HERE/vulkan/driver" -type f ! -type l)
+echo "   $scrubbed ELF RPATHs rewritten to \$ORIGIN"
+
+# 3. Source paths compiled into assert/log strings (__FILE__). Not fixable here - it needs
+# -ffile-prefix-map at llama.cpp compile time - so this warns rather than fails.
+leaky="$(grep -rlI --binary-files=text -e "$HOME/" "$HERE/vulkan/bin" "$HERE/vulkan/driver" 2>/dev/null | wc -l)"
+[ "$leaky" = 0 ] || echo "   WARNING: $leaky file(s) still embed \$HOME source paths (__FILE__ strings; rebuild with -ffile-prefix-map to clear)"
+
 echo "== vulkan: launcher symlinks (wrapper _run is tracked) =="
 for b in llama-server llama-cli llama-bench; do ln -sf _run "$HERE/vulkan/$b"; done
 
