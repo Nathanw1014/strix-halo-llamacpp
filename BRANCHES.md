@@ -17,9 +17,34 @@ Each carries exactly one fix, kept minimal so it can be reviewed and merged on i
 | `vulkan-fa-f16-kv-contig` | contiguize strided f16 KV before FA (the f16 counterpart of the dequant-once transpose; 2.63x pp @ 64k vs stock master) | Vulkan | stacked on the #25494 branch (extends its scratch infra); PR queued behind #25494 |
 | `feat/fa-p-hoist` | hoist the GEMM2 P `coopMatLoad` out of the `hsv_tile` loop (prefill) | Vulkan | ready; unconditional and 8 insertions in one file, but wants a second vendor first (the win depends on the driver unrolling the loop, and cm1 is shared with NVIDIA pre-Blackwell / Intel / AMD-Windows) |
 | `vulkan-dsv4-lightning-indexer` | DeepSeek V4 lightning-indexer kernels (scalar + coopmat, prefill + decode) and indexed sparse FA — contributed by Gaetan Puleo, hardened + parity tests added during integration | Vulkan | upstream candidate (clean cherry-pick onto master; PR not yet opened) |
+| [`vulkan-concat-transpose`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-concat-transpose) | tiled 32x32 shared-memory transpose for a dim-0 `CONCAT` whose src1 is transposed (the delta-net conv-state path reads it fully de-coalesced) — approach follows the tiled transposed concat Gaetan Puleo wrote for the HIP backend | Vulkan | upstream candidate (clean on master `cd0fa60`; CONCAT + MUL_MAT_ID green) |
+| [`vulkan-fuse-silu-mul`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-fuse-silu-mul) | route `silu(x)*y` (two nodes in the delta-net path) through the existing swiglu-split pipeline instead of a round trip through memory; no new shader | Vulkan | upstream candidate (clean on master `cd0fa60`; UNARY/MUL/GLU green) |
+| [`vulkan-mmid-scale-epilogue`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-mmid-scale-epilogue) | apply the per-(expert, token) broadcast scale in the `MUL_MAT_ID` tile epilogue at prefill — upstream's fusion is gated to mat-vec, so prefill pays a full write + read back of the matmul result | Vulkan | upstream candidate, **stacked on `vulkan-mmid-rowlists`** (extends its push-constant layout and `row_ids` indexing); MUL_MAT_ID + MUL green |
 
-Those six are the whole upstream set. Everything below ships in the combined branch but is
+Those nine are the whole upstream set. Everything below ships in the combined branch but is
 **not** offered upstream — see the per-item reasons in the 2026-07-30 section and the README.
+
+### 2026-08-06 — Strix Halo prefill fixes for delta-net MoE
+
+Measured on Qwen3.6-35B-A3B UD-Q4_K_XL, gfx1151/RADV, `-fa 1 -b 2048 -ub 2048`, all three flags on
+vs off on the same binary. Every flag defaults **off** on these per-concern branches, so a run is a
+same-binary A/B; the combined branch turns them on.
+
+| Fix | Flag | Effect |
+|---|---|---|
+| tiled transposed concat | `GGML_VK_CONCAT_TRANSPOSE=1` | CONCAT op 11877 us -> 957 us (12.4x); pp2048 1224 -> 1628 t/s |
+| mmid scale epilogue | `GGML_VK_MMID_SCALE_EPILOGUE=1` | MUL op 74.5 -> 25.5 ms/graph; pp2048 1667 -> 1734 t/s (+4.0%) |
+| silu/mul fusion | `GGML_VK_FUSE_UNARY_MUL=1` | fused pair 750 -> 443 us; +0.76% end to end |
+
+Cumulative on `strix-halo-fullstack`: pp2048 at ub2048 **1330 -> 1734 t/s (+30.8%)** over
+`strix-halo-vulkan`, decaying to +15.8% at 32k and +10.7% at 64k. Qwen3-Coder gains only ~5%,
+because three of the four target the gated-delta-net path that Coder does not have. Decode is
+unchanged everywhere (within +/-0.6%).
+
+The concat fix came from reading Gaetan Puleo's HIP `concat.cu`; the perf-logger trail that found it
+is in the repo's benchmark notes. `strix-halo-fullstack` additionally carries his eleven ROCm commits
+(authorship preserved) plus two correctness fixes found while integrating them: a NaN in his
+compacted tile-FA mask path, and a `ne[3]` hole in our own mmid epilogue gate.
 
 ## Combined / max-performance branches
 
