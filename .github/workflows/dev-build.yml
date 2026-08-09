@@ -172,8 +172,6 @@ jobs:
               echo "Changes since \`$prev\`: https://github.com/$LLAMA_REPO/compare/$prevsha...$SHORT"
               echo
             fi
-            echo "Images: \`ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev\` (rolling) / \`:vulkan-$TAG\` (pinned)"
-            echo
             echo '```'
             cat MANIFEST.txt
             echo '```'
@@ -182,14 +180,44 @@ jobs:
             --title "$TAG — llama.cpp strix-halo-vulkan@$SHORT" \
             --notes-file /tmp/notes.md \
             strix-halo-llamacpp-vulkan-portable.tar.gz MANIFEST.txt
+      # Never fail the build on this: the tarball release is the artifact that matters, and a
+      # push failure here is an account/package permission problem, not a bad build. The next
+      # step records what actually shipped, so the notes cannot advertise images that do not
+      # exist. GHCR_PAT (write:packages) is used when set, since GITHUB_TOKEN only works once
+      # the repo has Write under the package's "Manage Actions access".
       - name: push dev images to ghcr
+        id: ghcr
+        continue-on-error: true
         env:
           TAG: ${{ needs.check.outputs.tag }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
           set -euo pipefail
-          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "${GHCR_PAT:-${{ github.token }}}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           for t in vulkan-dev "vulkan-$TAG"; do
             docker tag strix-halo-llamacpp:vulkan "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
             docker push "ghcr.io/nathanw1014/strix-halo-llamacpp:$t"
           done
+
+      # Notes are written before the push so a push failure cannot lose the release; that leaves
+      # them silent about images until here.
+      - name: record what actually shipped
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.tag }}
+          PUSHED: ${{ steps.ghcr.outcome }}
+        run: |
+          set -euo pipefail
+          if [ ! -f /tmp/notes.md ]; then
+            echo "no notes file — the release step exited early, nothing to amend"
+            exit 0
+          fi
+          if [ "$PUSHED" = success ]; then
+            printf '\nImages: `ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev` (rolling) / `:vulkan-%s` (pinned)\n' "$TAG" >> /tmp/notes.md
+          else
+            printf '\n**No container images for this build** — the portable tarball above is the only artifact. `:vulkan-dev` may be absent or stale.\n' >> /tmp/notes.md
+            echo "::warning title=ghcr push failed::$TAG shipped the tarball only. Fix: give Nathanw1014/strix-halo-llamacpp Write under the package's Manage Actions access, or set a GHCR_PAT secret with write:packages."
+          fi
+          gh release edit "$TAG" --notes-file /tmp/notes.md
 
