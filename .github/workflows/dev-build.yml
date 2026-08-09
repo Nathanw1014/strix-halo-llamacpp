@@ -209,15 +209,17 @@ jobs:
           PUSHED: ${{ steps.ghcr.outcome }}
         run: |
           set -euo pipefail
-          if [ ! -f /tmp/notes.md ]; then
-            echo "no notes file — the release step exited early, nothing to amend"
-            exit 0
-          fi
+          # Read the live release rather than /tmp/notes.md: on a force re-run the release
+          # already exists, the notes step exits early and never writes that file, and a
+          # re-run to retry the push is precisely when this has to be right. Strip any line
+          # this step wrote before, then write the current one, so it is idempotent.
+          gh release view "$TAG" --json body --jq .body > /tmp/body.md
+          grep -v -e '^Images: `ghcr.io/nathanw1014' -e '^\*\*No container images' /tmp/body.md > /tmp/notes.final
           if [ "$PUSHED" = success ]; then
-            printf '\nImages: `ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev` (rolling) / `:vulkan-%s` (pinned)\n' "$TAG" >> /tmp/notes.md
+            printf '\nImages: `ghcr.io/nathanw1014/strix-halo-llamacpp:vulkan-dev` (rolling) / `:vulkan-%s` (pinned)\n' "$TAG" >> /tmp/notes.final
           else
-            printf '\n**No container images for this build** — the portable tarball above is the only artifact. `:vulkan-dev` may be absent or stale.\n' >> /tmp/notes.md
+            printf '\n**No container images for this build** — the portable tarball above is the only artifact. `:vulkan-dev` may be absent or stale.\n' >> /tmp/notes.final
             echo "::warning title=ghcr push failed::$TAG shipped the tarball only. Fix: give Nathanw1014/strix-halo-llamacpp Write under the package's Manage Actions access, or set a GHCR_PAT secret with write:packages."
           fi
-          gh release edit "$TAG" --notes-file /tmp/notes.md
+          gh release edit "$TAG" --notes-file /tmp/notes.final
 
