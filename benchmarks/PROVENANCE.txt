@@ -83,3 +83,27 @@ SUPERSEDED BY A BETTER-CONTROLLED MEASUREMENT
   The RADV-vs-ROCm prefill comparison in this pack predates the 2026-07-30 matrix, which runs
   BOTH backends from the same upstream head (8161641) under a stabilized protocol at r=3.
   For any RADV-vs-ROCm claim, prefer that matrix.
+
+--- Capture 2026-08-10 (glance-20260810/, the README "Speedups at a glance" table) ---
+Full rebuild of the glance table: every cell in it comes from this capture, nothing carried
+over. Previously two of its three rows had no artifacts in this repo at all.
+Box       : Framework Desktop / Ryzen AI Max+ 395 / Radeon 8060S (gfx1151), amd_iommu=off.
+Driver    : Mesa 26.3.0-devel RADV, local build (mesa-main d18d598e), libdrm 2.4.134.
+Shader cc : canonical glslc (shaderc v2026.3-dev). NOT the distro glslc - see the 2026-07-28 note.
+STOCK arm : upstream master 0b14b87 (2026-08-03), Vulkan, no fixes, no GGML_VK_* set.
+FIXED arm : 3be50cc on strix-halo-vulkan. No GGML_VK_* set either: the fixes are compiled-in
+            defaults, so both arms ran with an identical (empty) tuning environment and differ
+            only in the binary. Confirmed from the recorded env block in each .meta.
+Protocol  : llama-bench -ngl 99 -fa 1 -b 512 -ub 512 -p 512 -n 32 -d 0,4096,16384,32768,65536 -r 3
+Models    : Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL / Qwen3.6-35B-A3B-UD-Q4_K_XL /
+            Qwen2.5-7B-Instruct-Q4_K_M.
+Arms      : 3 models x {stock f16, fixed f16, fixed q8_0} = 9, run back to back in one sitting
+            under an exclusive GPU lock, llama-swap stopped, 59 GiB free at start.
+Files     : <run_id>.meta (build, branch, full env, exact argv, machine state), .raw (verbatim
+            stderr incl. the device line), .json (llama-bench -o json, the table's source).
+Validation: the stock arm reproduces the previously published stock baseline to within noise
+            (Coder-30B pp512 @d65536: 72.08 here vs 72.2 published; tg32 22.67 vs 22.68), which
+            is what licenses comparing these numbers against the older captures above.
+Note      : Qwen2.5-7B has qwen2.context_length = 32768 and no rope scaling, so its d65536 point
+            is outside trained context. It is recorded in the raw files but the README quotes the
+            7B at d32768 instead.

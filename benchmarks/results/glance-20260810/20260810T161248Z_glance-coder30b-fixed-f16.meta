@@ -1,0 +1,21 @@
+run_id: 20260810T161248Z_glance-coder30b-fixed-f16
+timestamp_utc: 20260810T161248Z
+label: glance-coder30b-fixed-f16
+backend: vulkan
+binary: /home/alloy/llama-fullstack/build-shv/bin/llama-bench
+build: ggml_vulkan: Found 1 Vulkan devices: ggml_vulkan: 0 = AMD Radeon 8060S Graphics (RADV STRIX_HALO) (radv) | uma: 1 | fp16: dot2 | bf16: 0 | fp4: 0 | warp size: 64 | shared memory: 65536 | int dot: 1 | matrix cores: KHR_coopmat error: invalid parameter for argument: --version
+source_commit: 3be50ccc2
+source_branch: strix-halo-vulkan
+argv: llama-bench -m /home/alloy/models/Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL.gguf -ngl 99 -fa 1 -b 512 -ub 512 -p 512 -n 32 -d 0,4096,16384,32768,65536 -r 3 -ctk f16 -ctv f16
+--- ggml/vk env ---
+LD_LIBRARY_PATH=/home/alloy/libdrm-install/lib
+VK_DRIVER_FILES=/home/alloy/mesa-main/build-rel/src/amd/vulkan/radeon_devenv_icd.x86_64.json
+VK_ICD_FILENAMES=/home/alloy/mesa-main/build-rel/src/amd/vulkan/radeon_devenv_icd.x86_64.json
+--- machine ---
+kernel: 6.17.0-35-generic
+cmdline_iommu: amd_iommu=off 
+mem_free_gib: 41 free / 59 avail / 62 total
+services: llama-swap=inactive comfyui=active gpu-yield=active
+gpu_procs: 0
+gpu_lock_wait_s: 0
+exit_code: 0
