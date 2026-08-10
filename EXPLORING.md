@@ -317,8 +317,9 @@ not runtime counters. It is the right tool for occupancy questions and the wrong
 anything dynamic.
 
 **External-tool hooks.** `GGML_VK_DEBUG_MARKERS=1` enables `VK_EXT_debug_utils` labels, so
-a capture in RGP, RenderDoc, or Nsight shows ggml op names on the timeline instead of
-anonymous dispatches.
+a capture shows ggml op names on the timeline instead of anonymous dispatches. Read the
+RGP section below before assuming you can take that capture: on RADV, for a headless
+compute workload, you currently cannot.
 
 **Sync and memory tracing.** `GGML_VK_SYNC_LOGGER=1` prints every barrier the backend
 inserts and every node as it is queued. `GGML_VK_MEMORY_LOGGER=1` for allocation churn.
@@ -334,8 +335,9 @@ Being direct, because this has come up as a criticism and the criticism is large
   wall-clock timeline of dispatches.
 - **No hardware performance counters.** `VK_KHR_performance_query` is not used anywhere
   in the backend. You cannot get cache hit rate, memory stall cycles, or runtime
-  occupancy out of llama.cpp. You get those from RGP or rocprofv3 or the vendor
-  equivalent, treating llama.cpp as an opaque application.
+  occupancy out of llama.cpp. The usual advice is to fall back to the vendor tool and
+  treat llama.cpp as an opaque application. On RADV that fallback does not exist either,
+  for reasons set out below. On HIP, rocprofv3 does work.
 - **Output is aggregate.** `print_timings` buckets by op name (plus shape, if you ask)
   and prints text to stderr. There is no per-dispatch record you can post-process.
 
@@ -382,16 +384,43 @@ The honest workflow, which is a workaround and not a solution:
 2. `GGML_VK_PERF_LOGGER_CONCURRENT=1` to check whether that op's isolated cost actually
    translates to wall-clock, or whether it was overlapping with something.
 3. `GGML_VK_PIPELINE_STATS` for register and LDS pressure on that specific shader.
-4. `GGML_VK_DEBUG_MARKERS=1` plus RGP when we need a real timeline or hardware counters.
-5. When even that is not enough: **write a standalone microbenchmark**. We ended up
-   building a separate cross-GPU Vulkan strided-read benchmark because no amount of
-   in-app instrumentation could isolate the memory behaviour we were chasing. That tool
-   answered the question in an afternoon after weeks of inference-level guessing.
+4. When that is not enough: **write a standalone microbenchmark**. We ended up building a
+   separate cross-GPU Vulkan strided-read benchmark because no amount of in-app
+   instrumentation could isolate the memory behaviour we were chasing. That tool answered
+   the question in an afternoon after weeks of inference-level guessing.
 
-Point 5 is the real lesson. A large fraction of our results came from **stepping outside
-llama.cpp entirely** to isolate one variable, then coming back. The in-app tooling is
-adequate for attribution and inadequate for mechanism. If you are asking "why", build the
-microbenchmark.
+Point 4 is not a flourish, it is what we do instead of having counters. A large fraction
+of our results came from **stepping outside llama.cpp entirely** to isolate one variable,
+then coming back. The in-app tooling is adequate for attribution and inadequate for
+mechanism. If you are asking "why", build the microbenchmark.
+
+### Why there is no RGP step in that list
+
+An earlier revision of this document listed "`GGML_VK_DEBUG_MARKERS=1` plus RGP for a real
+timeline and hardware counters" as step 4. That was wrong and it has been removed. We have
+never captured an RGP trace of llama.cpp, and on RADV you currently cannot.
+
+SQTT capture on RADV is gated on the swapchain present path at two independent levels, as
+of mesa-main `d18d598e` (2026-07-20):
+
+- `radv_handle_sqtt`, which starts and stops the capture, has exactly one caller:
+  `sqtt_QueuePresentKHR` (`src/amd/vulkan/layers/radv_sqtt_layer.c`).
+- In the shared mesa runtime, `device->capture_trace` is invoked from one place,
+  `src/vulkan/wsi/wsi_common.c`, and the `MESA_VK_TRACE_TRIGGER` trigger-file check sits
+  in the same WSI function.
+
+`llama-bench` never presents, so neither path fires. A headless compute workload cannot
+be captured without patching RADV to trigger outside WSI. This is a known long-standing
+gap, not something specific to llama.cpp.
+
+`GGML_VK_DEBUG_MARKERS=1` still emits real `VK_EXT_debug_utils` labels, and those are
+useful on stacks where a capture is possible at all. On RADV headless they currently
+label a timeline nobody can record.
+
+So the "no hardware performance counters" limitation above is worse than it first sounds.
+It is not "llama.cpp does not expose counters, use the vendor tool". On this stack there
+is no vendor tool path either, which is the actual reason the microbenchmark in point 4
+exists.
 
 The counterargument to the criticism, for fairness: a transformer graph is the same ~50
 op shapes repeated 40-60 times per token, so a 3000-dispatch timeline is 60 redundant
@@ -695,7 +724,8 @@ GGML_VK_DISABLE_MMVQ=1 ./bin/llama-bench -m model.gguf -p 4096
 # 5. Register and LDS pressure on the hot shader
 GGML_VK_PIPELINE_STATS=flash_attn ./bin/llama-bench -m model.gguf -p 4096
 
-# 6. Real timeline and hardware counters: label, then capture in RGP
+# 6. Label dispatches for an external capture. NOTE: on RADV headless there is no
+#    capture to take, SQTT is gated on swapchain present. See the RGP section.
 GGML_VK_DEBUG_MARKERS=1 ./bin/llama-bench -m model.gguf -p 4096
 
 # 7. Isolate the op, no model in the way
