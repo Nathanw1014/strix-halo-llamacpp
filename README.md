@@ -357,6 +357,16 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   the clean upstream-candidate cut is
   [`vulkan-dsv4-lightning-indexer`](https://github.com/Nathanw1014/llama.cpp/tree/vulkan-dsv4-lightning-indexer).
 
+- **Jaap Buurman ([@Mushoz](https://github.com/Mushoz))**: the DeepSeek V4 sparse-prefill
+  acceleration, a coopmat flash-attention kernel for the indexed sparse path plus a raw/selected
+  split, tiled scratch, probability-fragment reuse and per-key-block mask caching (prefill 119 to
+  210 tok/s at 32k depth, sparse FA 8.16 s to 1.10 s), contributed as
+  [PR #2](https://github.com/Nathanw1014/llama.cpp/pull/2) and merged with authorship intact; the
+  Lightning Indexer prefill parallelization, 25 to 51% off the indexer depending on shape
+  ([PR #3](https://github.com/Nathanw1014/llama.cpp/pull/3)); and the diagnosis of the batch 2 to
+  63 decode gap that the small-batch gather-to-compact commits fix. Those commits carry a
+  `Suggested-by` trailer.
+
 ## Notes and caveats
 
 - Vulkan is the recommended default on this hardware; the HIP image is for quantized-KV
