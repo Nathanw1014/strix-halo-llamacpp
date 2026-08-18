@@ -9,41 +9,55 @@ The measurements behind these fixes (matrices, methodology, raw data) live in th
 
 ## Speedups at a glance
 
-**Fixed build vs stock master, same box, same hour** (`amd_iommu=off`, pp512 / tg32 t/s, `-b 512 -ub 512`,
-`-r 3`, measured 2026-08-10). Baseline is stock upstream `0b14b87` at f16 KV; fixed is `3be50cc` on
-`strix-halo-vulkan`. Every cell traces to a raw run under [`benchmarks/results/`](benchmarks/results/).
+**v0.6.4 payload vs stock master, same box, same session** (`amd_iommu=off`, pp512 / tg32 t/s, `-b 512 -ub 512`,
+`-r 3`, captured 2026-08-18 between 05:28 and 06:04 UTC). Baseline is stock upstream `9f0d017` at f16 KV, the
+commit this release merged; fixed is the released v0.6.4 payload (`baf6360b` on `strix-halo-vulkan`). Both arms
+were built with the same pinned glslc and run against the same pinned Mesa, so only llama.cpp differs. Every cell
+traces to a raw run under [`benchmarks/results/glance-20260818/`](benchmarks/results/glance-20260818/).
 
 | Model (arch) | KV | Prefill d0 | Prefill deep | Decode d0 | Decode deep |
 |---|---|---:|---:|---:|---:|
-| Qwen3-Coder-30B-A3B-Instruct (Q6_K_XL, hd128 MoE) | f16 *stock* | 1160 | 72 | 68 | 23 |
-| | f16 | 1229 = +6% | **232 = 3.22x** | 69 = +1% | 22 = -1% |
-| | q8_0 | 1215 = +5% | **235 = 3.26x** | 68 = -0% | **32 = +42%** |
-| Qwen3.6-35B-A3B (Q4_K_XL, hd256 MoE) | f16 *stock* | 1128 | 493 | 60 | 43 |
-| | f16 | 1373 = **+22%** | 584 = +18% | 61 = +2% | 43 = -0% |
-| | q8_0 | 1372 = **+22%** | 588 = +19% | 61 = +2% | 50 = +15% |
-| Qwen2.5-7B-Instruct (Q4_K_M, hd128 dense) | f16 *stock* | 1351 | 360 | 48 | 34 |
-| | f16 | 1363 = +1% | **632 = 1.75x** | 48 = +1% | 34 = -1% |
-| | q8_0 | 1356 = +0% | **634 = 1.76x** | 47 = -1% | 38 = +11% |
+| Qwen3-Coder-30B-A3B-Instruct (Q6_K_XL, hd128 MoE) | f16 *stock* | 1161 | 72 | 69 | 23 |
+| | f16 | 1242 = +7% | **235 = 3.26x** | 69 = +1% | 23 = +0% |
+| | q8_0 | 1230 = +6% | **233 = 3.24x** | 69 = +0% | **32 = +41%** |
+| Qwen3.6-35B-A3B (Q4_K_XL, hd256 MoE) | f16 *stock* | 1125 | 492 | 62 | 43 |
+| | f16 | 1507 = **+34%** | 618 = **+26%** | 62 = -0% | 43 = -0% |
+| | q8_0 | 1524 = **+35%** | 616 = **+25%** | 62 = -1% | 50 = +14% |
+| Qwen2.5-7B-Instruct (Q4_K_M, hd128 dense) | f16 *stock* | 1350 | 358 | 48 | 34 |
+| | f16 | 1512 = **+12%** | **663 = 1.85x** | 48 = +0% | 34 = -0% |
+| | q8_0 | 1505 = **+11%** | **660 = 1.84x** | 47 = -1% | 38 = +14% |
 
 "deep" is **d65536** for the two MoE models and **d32768** for Qwen2.5-7B, whose trained context is 32768
-(`qwen2.context_length`, no rope scaling). The 7B does keep scaling past that - 398 t/s at d65536, 2.31x -
-but that is outside the context the model was trained for, so it is not quoted beside two models measured
-inside theirs. Full curves for all five depths are in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
+(`qwen2.context_length`, no rope scaling). The 7B does keep scaling past that, 2.31x at d65536 on the
+2026-08-10 capture, but that is outside the context the model was trained for, so it is not quoted beside two
+models measured inside theirs. This capture takes d0 and the deep point only; full curves for all five depths
+are in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md), from the 2026-08-10 capture.
 
-**The win is a head-dim effect, not a dense-vs-MoE one.** Both hd128 models scale hard with depth (Coder
-1.06x at d0 rising to 3.22x at 64k; the dense 7B 1.01x rising to 1.75x at 32k) while the hd256 model sits
-flat at ~1.2x everywhere. One of those hd128 models is MoE and one is dense, so what tracks the win is KV
-channel count, not sparsity. The hd256 model never collapsed in the first place, so there is no collapse to
-recover - its gain is broad instead.
+All three stock arms reproduce their 2026-08-10 values within 0.5% on every cell, a week of upstream apart, so
+the movement in the fixed rows is this stack changing and not the baseline or the box drifting.
 
-**Decode is untouched by the Vulkan fixes, by construction.** Across all three models, fixed-f16 decode
-matches stock-f16 decode within 1% at every depth. So the decode column's q8 win is the KV *type*, not the
-patches: +42% on Coder, +15% on the 35B, +11% on the dense 7B at their deep points.
+**Depth scaling is a head-dim effect, not a dense-vs-MoE one.** Both hd128 models climb hard with depth (Coder
+1.07x at d0 rising to 3.26x at 64k; the dense 7B 1.12x rising to 1.85x at 32k) while the hd256 model is flat to
+slightly declining (1.34x at d0, 1.26x at 64k). One of those hd128 models is MoE and one is dense, so what tracks
+the depth win is KV channel count, not sparsity. The hd256 model never collapsed in the first place, so there is
+no collapse to recover.
+
+**What moved since the 2026-08-10 capture is the shallow end.** The 35B went +22% to +34% at d0 and the dense 7B
++1% to +12%, while Coder-30B barely moved at d0 (+6% to +7%). That is the v0.6.4 matmul work: the wave32 retile
+and LDS pad tune apply to the quantised *dense* coopmat pipelines, which is most of the 7B's prefill and much of
+the 35B's, whereas Coder-30B-A3B pushes its GEMM through `mul_mat_id`, which already ran wave32. The 35B also
+collects the transposed-concat default, a fix derived on exactly its delta-net conv-state path. Those
+attributions come from the per-commit isolations in the release notes, not from this table, which measures the
+whole stack at once.
+
+**Decode is untouched by the Vulkan fixes, by construction.** Across all three models, fixed-f16 decode matches
+stock-f16 decode within 1% at every depth. So the decode column's q8 win is the KV *type*, not the patches:
++41% on Coder, +14% on the 35B, +14% on the dense 7B at their deep points.
 
 **Read the prefill rows as a build comparison, not a KV-type one.** f16 and q8 land within 1.2% of each
 other at every depth on every model, so on this stack **KV quantization is no longer a prefill-speed
 decision**. Keep `-ctk q8_0 -ctv q8_0` anyway: it still buys KV memory and the decode throughput at depth
-shown above. One caveat the earlier numbers missed: q8 costs a few percent of *shallow* prefill (-1.2% at
+shown above. One caveat the earlier numbers missed: q8 costs a few percent of *shallow* prefill (-1.0% at
 d0 on Coder, and up to -3.1% at the larger production ubatch), and that cost falls to zero by 64k. See
 [f16 catches up](benchmarks/BENCHMARKS.md#f16-catches-up-the-kv-contig-fix-2026-07-28-build-74434c3).
 
@@ -55,6 +69,9 @@ d0 on Coder, and up to -3.1% at the larger production ubatch), and that cost fal
 | all-quant transpose | Vulkan | extends it to q4/q5 KV (q4 lands the same 2.64x) |
 | f16 KV contiguize | Vulkan | **2.63x** f16 prefill at depth (Coder-30B pp512 @64k: 70.6 to 190.0 vs master `8161641`). f16 KV only, prefill only, on by default (`GGML_VK_FA_KV_CONTIG=0` opts out). It contributes nothing to the q8 headline above; it is what makes the f16 line match it. |
 | FA prefill stack (P-hoist / `Psh` relayout / wave32) | Vulkan | +2.8 to +3.1% at d0 rising to **+21.6 to +22.0%** at d32768 on Coder-30B, consistent across f16/q8/q4 KV, decode unchanged. P-hoist alone +6.9/+8.1/+9.2% at d8k/16k/32k; the wave32 pin adds a further +2.7 to +11.9% on top, rising with depth; the `Psh` relayout measures ~0 on its own and rides along as the enabler for the vectorized GEMM2 A load. |
+| dense wave32 retile (v0.6.4) | Vulkan | quantised *dense* coopmat pipelines run at wave32 on RDNA3.x, where WMMA is wave32-native. Standalone MUL_MAT at the dense FFN shapes: q6_K +5.2 to +10.8%, q8_0 +5.4 to +8.4%, q4_K +0.7 to +9.1%; the float paths are bandwidth-bound and left alone. PPL bit-identical. |
+| coopmat LDS pad tune (v0.6.4) | Vulkan | per-path shared-memory pad on RADV: pad 2 reaches 16 of 32 banks against 8 for the old constant, +13% mean on the quantised path in a standalone sweep (q4_0 +32%, q8_0 +22%, q4_K +10%, q6_K +1%). Largest where the dequant is cheapest, the complement of what wave32 helps. Together with the retile: **+11.0% / +7.7%** pp2048 at ub256 / ub2048 on Qwen3-32B, payload A/B against v0.6.2. |
+| transposed concat (v0.6.4) | Vulkan | default-on tiled transpose for the delta-net conv-state concat, which otherwise walks src1 at a stride that lands every read on one of 16 memory channels (13.7 GB/s against 138.9). +7.2% pp2048 at ub2048 on Qwen3.8-27B, +0.4% at ub256. Delta-net models only. |
 | mmid row-list prepass | Vulkan | **+8.4%** MoE prefill on the 2026-07-14 window (q8 KV, base `b805834`); the current in-repo isolation on f16 measures +11.2% at d0 / +8.2% at d16384 (`results/finalize/rowlists_{off,on}.md`). Model-dependent; ~1–2% on Coder at depth. |
 | mmid BM64 | Vulkan | +1.3% (13.5 t/s against ±3.5 — near noise). The scale-cache that used to sit here is disabled: it was obsoleted by later tile changes and regressed. |
 | mmid WAVE32 / F16B | Vulkan | marginal. WAVE32 +2.8%, but its mechanism caps out ~1.7%, so treat it as noise-adjacent. F16B is quoted at +2.4% from an unvendored model; the only in-repo isolation (Coder-30B) measures +1.2% at d0. On by default. |
@@ -66,8 +83,10 @@ Honest read: on Coder the **q8 prefill headline is almost entirely FA dequant-on
 stack adding roughly a fifth more at depth. The f16 contiguize is a win of comparable size on the f16 line,
 which is why KV type is no longer a prefill-speed decision here. `rowlists` is the
 real MoE-prefill fix (larger on other shapes); the rest are small waste-removals and the knob-tweaks are
-marginal-to-negative — as expected on a bandwidth-bound kernel. Full per-depth matrices + charts are below
-and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
+marginal-to-negative — as expected on a bandwidth-bound kernel. The v0.6.4 matmul rows are the exception to
+that last clause: they are the first knob-level changes here worth double digits, and they act at *every*
+depth rather than only where FA collapses, which is why the shallow end of the table moved. Full per-depth
+matrices + charts are below and in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md).
 
 ## What's inside
 
