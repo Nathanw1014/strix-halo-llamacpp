@@ -104,6 +104,15 @@ The **stable channel is untouched**: `:vulkan`, `:hip` and the v0.x releases rem
 from validated on-box builds. Dev builds are compile- and packaging-tested only (the runner
 has no gfx1151), so promotion to stable stays a manual, benchmark-gated step.
 
+Stable releases are cut from a **pinned, individually validated commit**, never from
+whatever the branch tip happens to be. Every commit in `<previous payload sha>..<pinned sha>`
+ships with the release, so each one in that range needs at least a smoke test on the paths it
+touches before the tag is created (hybrid/MTP speculative serving is the easy one to miss:
+dense-target testing never reaches the checkpoint paths). If the tip carries commits that are
+not yet validated, either validate them first or build from a release branch that
+cherry-picks the validated work onto the previous payload base; `dev-build.yml` takes any
+ref via `workflow_dispatch`, so the pipeline needs no changes for that.
+
 CI-specific deltas from the local recipe, all in `ci/build-payload.sh`:
 
 - **mesa/libdrm/shaderc are pinned** (`MESA_REF` / `LIBDRM_REF` / `SHADERC_REF` in the workflow
