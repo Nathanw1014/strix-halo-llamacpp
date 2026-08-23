@@ -9,3 +9,6 @@ hip/bin/
 *.tar.gz
 MANIFEST.txt
 *.err
+
+# release payload backups
+*.tar.gz.*-backup

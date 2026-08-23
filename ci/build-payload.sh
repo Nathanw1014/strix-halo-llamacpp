@@ -124,5 +124,8 @@ vulkan dir size: $(du -sh "$HERE/vulkan" | cut -f1)
 EOF
 cat "$HERE/MANIFEST.txt"
 
-tar -C "$HERE" -czf "$HERE/strix-halo-llamacpp-vulkan-portable.tar.gz" vulkan README.md MANIFEST.txt
+# LICENSE + THIRD-PARTY-NOTICES.md ship with the payload: it bundles MIT-licensed llama.cpp,
+# Mesa/RADV and libdrm binaries, and MIT requires their notices to travel with the copies.
+tar -C "$HERE" -czf "$HERE/strix-halo-llamacpp-vulkan-portable.tar.gz" \
+    vulkan README.md MANIFEST.txt LICENSE THIRD-PARTY-NOTICES.md
 echo "== payload + tarball ready (llama.cpp $LLAMA_SHA) =="
