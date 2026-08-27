@@ -366,6 +366,15 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   Coder-30B), decode within noise at -2.4% to +3.9%** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
   taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
 
+## Support
+
+If you want to support my work on making local inference better, you are welcome to do so here:
+
+**[buymeacoffee.com/nathanw1014](https://buymeacoffee.com/nathanw1014)**
+
+It goes towards hardware, which means faster iteration on finding, testing and validating fixes,
+and that feeds back into more and better releases.
+
 ## Credits
 
 - **Gaetan Puleo** — the DeepSeek V4 Vulkan work: lightning-indexer kernels (scalar + coopmat
