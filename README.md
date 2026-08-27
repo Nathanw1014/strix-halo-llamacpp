@@ -366,6 +366,60 @@ fixes-vs-tweaks taxonomy are in [BRANCHES.md](BRANCHES.md).
   Coder-30B), decode within noise at -2.4% to +3.9%** — a modest tuning gain, not the larger figures sometimes cited. The benchmark numbers above are
   taken with it **off**, so leaving the IOMMU on costs you roughly that few percent, nothing more.
 
+## Running Qwen3.8-Flash-Next
+
+The engram / PLE table (`per_layer_token_embd`) is ~95 GiB at f16. It **cannot** be offloaded and
+is not meant to be: it is memory-mapped and read a few KB per token. Everything below assumes it
+stays mapped on the host.
+
+### Mandatory flags
+
+```
+--load-mode mmap --no-host --no-repack --fit off
+```
+
+`--load-mode auto` silently disables mmap when a Vulkan device is present and then tries to
+allocate the whole table, which is a real second copy rather than a mapping. If you see ~95 GiB of
+anonymous RSS, that is what happened. Check with:
+
+```
+grep -E "RssFile|RssAnon" /proc/$(pgrep -f llama-server)/status
+```
+
+The table should show in the load log as `CPU_Mapped model buffer size`, never under `Vulkan0`.
+
+### Best decode: fit the experts in GTT
+
+On a 64 GB box a Q3-class cut fits fully offloaded, which is the fastest decode configuration:
+
+```
+llama-server -m Qwen3.8-Flash-Next-Q3-*.gguf \
+  -ngl 99 --n-cpu-moe 0 -fa on \
+  --load-mode mmap --no-host --no-repack --fit off
+```
+
+Measured on gfx1151 / 64 GB, Q3 cut: **pp512 101.7, tg128 25.4 t/s**.
+
+`--n-cpu-moe 0` is what makes decode fast. Raise it only if the model does not fit: each step
+spills more experts to the host and costs decode. If a larger quant will not load, raise
+`--n-cpu-moe` until it does rather than dropping `-ngl`.
+
+### 128 GB boxes
+
+More of the model fits, so start at `--n-cpu-moe 0` with a larger quant. The table still stays
+mapped on the host regardless of how much VRAM you have, since it is larger than either.
+
+### MTP (speculative decoding)
+
+The draft head ships as a separate sidecar. It needs GTT headroom **alongside** the target, so on
+a 64 GB box you must leave room for it (`--n-cpu-moe 4` or higher). At `--n-cpu-moe 0` the target
+alone fills GTT and the first queue submit dies with `vk::DeviceLostError`.
+
+### Vision
+
+Not yet supported. The mmproj is a standard `qwen3vl_merger`, so the encoder side is already
+implemented; the text-side wiring is in progress.
+
 ## Support
 
 If you want to support my work on making local inference better, you are welcome to do so here:
