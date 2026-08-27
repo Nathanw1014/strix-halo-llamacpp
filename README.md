@@ -417,8 +417,26 @@ alone fills GTT and the first queue submit dies with `vk::DeviceLostError`.
 
 ### Vision
 
-Not yet supported. The mmproj is a standard `qwen3vl_merger`, so the encoder side is already
-implemented; the text-side wiring is in progress.
+Works. Pass the mmproj alongside the model:
+
+```
+llama-mtmd-cli \
+  -m Qwen3.8-Flash-Next-Q3-*.gguf --mmproj mmproj-F16.gguf \
+  --image photo.png -p "Describe this image." \
+  -ngl 99 --n-cpu-moe 8 -fa on \
+  --load-mode mmap --no-host --no-repack --fit off < /dev/null
+```
+
+Two things to know:
+
+- **Give it GTT headroom.** The vision tower needs room beside the target, so `--n-cpu-moe 0`
+  gets OOM-killed on a 64 GB box. `8` works.
+- **`--image` and `-p` together force single-shot.** Without an image the CLI drops into an
+  interactive chat REPL, and if stdin is not a terminal it spins on its own prompt and writes
+  gigabytes of log. Redirect stdin from `/dev/null`.
+
+For grounding tasks the loader will suggest `--image-min-tokens 1024`; the default is fine for
+description.
 
 ## Support
 
