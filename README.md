@@ -398,16 +398,34 @@ llama-server -m Qwen3.8-Flash-Next-Q3-*.gguf \
   --load-mode mmap --no-host --no-repack --fit off
 ```
 
-Measured on gfx1151 / 64 GB, Q3 cut: **pp512 101.7, tg128 25.4 t/s**.
+Measured on gfx1151 / 64 GB, Q3 cut, v0.7.2: **pp512 352, tg128 33.4 t/s**.
+
+Those figures need `--tensor-read-lazy`, which is on by default since v0.7.2. Earlier releases
+measured **pp512 101.7, tg128 25.4** on the same box and the same weights; that difference is the
+engram table's mapping, not the model. See the
+[v0.7.2 notes](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2). The win
+shrinks with context depth (3.5x at depth 0, 2.5x at 32k) and depends on the table not fitting in
+page cache, so expect much less of it on a 128 GB box.
 
 `--n-cpu-moe 0` is what makes decode fast. Raise it only if the model does not fit: each step
 spills more experts to the host and costs decode. If a larger quant will not load, raise
 `--n-cpu-moe` until it does rather than dropping `-ngl`.
 
+At `-ub 2048` on a 64 GB box, `-ncmoe 0` and `1` do not fit and die with `vk::DeviceLostError`;
+**2 is the floor**, not the 4 previously suggested here. Every step above the floor costs about
+7.4% of pp512 (333.9 at 2, 310.8 at 3, 286.4 at 4), so 4 gives away roughly 17% prefill for
+nothing. `-ub 256` with `-ncmoe 0` is faster than any `-ub 2048` configuration this box can run.
+
 ### 128 GB boxes
 
 More of the model fits, so start at `--n-cpu-moe 0` with a larger quant. The table still stays
 mapped on the host regardless of how much VRAM you have, since it is larger than either.
+
+`--tensor-read-lazy` helps much less here, because the table largely fits in page cache already.
+Three community runs on 128 GB machines measured prefill at 1.35x, 1.53x and 1.43x, with decode
+at 0.90x, 1.04x and 1.00x. The decode figures are a wash and we cannot yet explain the 0.90; if
+you serve interactively and want the older behaviour exactly, pass `--tensor-read-lazy off`.
+These are reported by their owners rather than measured here.
 
 ### MTP (speculative decoding)
 
