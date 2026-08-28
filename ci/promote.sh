@@ -15,6 +15,11 @@
 #      tarball's sha256 so byte-provenance survives the repack
 #   4. repacks the tarball with the corrected manifest inside, payload bytes untouched
 #   5. uploads both to the v-tag
+#   6. promotes the CONTAINER image to :vulkan-<vtag> and :vulkan, from the same dev build
+#
+# Step 6 exists because "cut a release" has to mean both artifacts. v0.7.2 shipped with the
+# tarball promoted and `docker pull ...:vulkan` still serving the previous release, which is the
+# copy most people actually run.
 #
 # Nothing is uploaded without --yes; the default prints the plan and the manifest diff.
 #
@@ -127,3 +132,37 @@ gh release view "$VTAG" --repo "$REPO" >/dev/null 2>&1 || {
 gh release upload "$VTAG" --repo "$REPO" --clobber \
     "$OUT/strix-halo-llamacpp-vulkan-portable.tar.gz" "$OUT/MANIFEST.txt"
 echo "== uploaded to $VTAG =="
+
+# ---- 6. promote the container image ---------------------------------------------------------
+# Same source build as the tarball: the dev pipeline tags its image vulkan-<devtag>.
+IMG=ghcr.io/nathanw1014/strix-halo-llamacpp
+SRCIMG="$IMG:vulkan-$DEVTAG"
+if ! command -v docker >/dev/null || ! docker buildx version >/dev/null 2>&1; then
+    echo "WARNING: docker/buildx unavailable, container tags NOT promoted." >&2
+    echo "         :vulkan still serves the previous release. Promote manually:" >&2
+    echo "         docker buildx imagetools create -t $IMG:vulkan-$VTAG -t $IMG:vulkan $SRCIMG" >&2
+    exit 0
+fi
+if ! docker buildx imagetools inspect "$SRCIMG" >/dev/null 2>&1; then
+    echo "WARNING: $SRCIMG not found or not readable, container tags NOT promoted." >&2
+    exit 0
+fi
+
+echo "== promoting container image from $SRCIMG =="
+docker buildx imagetools create -t "$IMG:vulkan-$VTAG" -t "$IMG:vulkan" "$SRCIMG" || {
+    echo "WARNING: image retag failed (are you logged in to ghcr? gh auth token | docker login ghcr.io -u <user> --password-stdin)" >&2
+    exit 0
+}
+
+# Verify BEHAVIOURALLY and with a positive control. A grep for a flag that returns 0 is
+# indistinguishable from a broken check: `strings` is not in the image, and `docker run` serves a
+# locally cached tag without consulting the registry. Pull first, and prove the check can fire.
+BENCH=/opt/strix-halo-llamacpp/vulkan/bin/llama-bench
+docker pull -q "$IMG:vulkan" >/dev/null 2>&1 || true
+ctl=$(docker run --rm --entrypoint "$BENCH" "$IMG:vulkan" --help 2>&1 | grep -c -- "--load-mode" || true)
+if [ "${ctl:-0}" -lt 1 ]; then
+    echo "WARNING: control check failed (--load-mode absent from --help), cannot verify the image." >&2
+    echo "         Tags were pushed but are UNVERIFIED." >&2
+    exit 0
+fi
+echo "== container promoted: $IMG:vulkan-$VTAG and $IMG:vulkan (control check passed) =="

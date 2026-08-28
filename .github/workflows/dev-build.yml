@@ -50,6 +50,7 @@ jobs:
       short: ${{ steps.decide.outputs.short }}
       tag: ${{ steps.decide.outputs.tag }}
       subject: ${{ steps.decide.outputs.subject }}
+      ref: ${{ steps.decide.outputs.ref }}
     steps:
       - id: decide
         env:
@@ -74,6 +75,7 @@ jobs:
             echo "tag=$tag"
             echo "subject=$subject"
           } >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "$REF @ $short ($subject) -> build=$build tag=$tag"
 
   build:
@@ -154,6 +156,7 @@ jobs:
           SHA: ${{ needs.check.outputs.sha }}
           SHORT: ${{ needs.check.outputs.short }}
           SUBJECT: ${{ needs.check.outputs.subject }}
+          REF: ${{ needs.check.outputs.ref }}
         run: |
           set -euo pipefail
           # idempotent: a force re-run (e.g. to retry the image push) keeps the existing release
@@ -163,7 +166,7 @@ jobs:
           fi
           prev=$(gh release list --limit 40 --json tagName --jq '[.[].tagName | select(startswith("dev-"))][0] // empty')
           {
-            echo "Automated dev build of [\`$LLAMA_REPO@strix-halo-vulkan\`](https://github.com/$LLAMA_REPO/tree/strix-halo-vulkan) at [\`$SHORT\`](https://github.com/$LLAMA_REPO/commit/$SHA) — $SUBJECT"
+            echo "Automated dev build of [\`$LLAMA_REPO@$REF\`](https://github.com/$LLAMA_REPO/tree/$REF) at [\`$SHORT\`](https://github.com/$LLAMA_REPO/commit/$SHA) — $SUBJECT"
             echo
             echo "> Compile-tested and container-smoke-tested only; CI has no gfx1151, so no benchmark or correctness validation ran. Benchmark-validated releases are the v0.x line."
             echo
@@ -177,7 +180,7 @@ jobs:
             echo '```'
           } > /tmp/notes.md
           gh release create "$TAG" --prerelease \
-            --title "$TAG — llama.cpp strix-halo-vulkan@$SHORT" \
+            --title "$TAG — llama.cpp $REF@$SHORT" \
             --notes-file /tmp/notes.md \
             strix-halo-llamacpp-vulkan-portable.tar.gz MANIFEST.txt
       # Never fail the build on this: the tarball release is the artifact that matters, and a
