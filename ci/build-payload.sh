@@ -15,6 +15,10 @@
 #                   while the pins hold (these are the slow, rarely-changing half of the build)
 #   WORK            scratch dir              (default <repo>/_work)
 #   JOBS            parallelism              (default nproc)
+#   BUILD_KIND      label for the manifest's "Built ... (<kind>)" line
+#                   (default "automated dev build")
+#   VALIDATION_FILE optional file whose contents become the manifest's `validation:` block.
+#                   Unset means the manifest says plainly that nothing was validated.
 #
 # Output: <repo>/vulkan payload, <repo>/MANIFEST.txt, <repo>/strix-halo-llamacpp-vulkan-portable.tar.gz
 set -euo pipefail
@@ -27,6 +31,7 @@ LIBDRM_REF="${LIBDRM_REF:-libdrm-2.4.133}"
 SHADERC_REF="${SHADERC_REF:-49a8724d561c13db22b52f99f2a0e2707a9a9e3c}"
 WORK="${WORK:-$HERE/_work}"
 JOBS="${JOBS:-$(nproc)}"
+BUILD_KIND="${BUILD_KIND:-automated dev build}"
 mkdir -p "$WORK"
 
 # ---- toolchain: glslc + mesa RADV + libdrm (pinned; cacheable) ---------------------------
@@ -115,13 +120,30 @@ LIBDRM_DIR="$TC/libdrm-stage/usr/lib" \
     "$HERE/build-from-source.sh"
 
 cat > "$HERE/MANIFEST.txt" <<EOF
-Built $(date -u +%Y-%m-%dT%H:%M:%SZ) (automated dev build)
+Built $(date -u +%Y-%m-%dT%H:%M:%SZ) ($BUILD_KIND)
 source: $LLAMA_REF ${LLAMA_SHA:0:7} ($LLAMA_SUBJECT)
 mesa: ${MESA_REF:0:9}  libdrm: ${LIBDRM_REF#libdrm-}  glslc: $("$TC/glslc" --version | head -1)
 vulkan bins: $(cd "$HERE/vulkan/bin" && ls llama-* | tr '\n' ' ')
 vulkan driver: $(cd "$HERE/vulkan/driver" && ls | tr '\n' ' ')
 vulkan dir size: $(du -sh "$HERE/vulkan" | cut -f1)
 EOF
+
+# The validation field is always present, so "what was tested" can never be answered by absence.
+# A dev build states plainly that nothing was validated; a curated release passes VALIDATION_FILE
+# and gets its record back (v0.6.2 shipped test-backend-ops counts plus the payload A/B, and the
+# v0.x line has no meaning without it). Continuations are indented to match that format.
+if [ -n "${VALIDATION_FILE:-}" ]; then
+    [ -f "$VALIDATION_FILE" ] || { echo "VALIDATION_FILE does not exist: $VALIDATION_FILE" >&2; exit 1; }
+    # an empty file would silently drop the field, which is the exact hole this closes
+    grep -q '[^[:space:]]' "$VALIDATION_FILE" || { echo "VALIDATION_FILE is empty: $VALIDATION_FILE" >&2; exit 1; }
+    # strip trailing blank lines so the block does not end in whitespace-only rows
+    sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$VALIDATION_FILE" \
+        | awk 'NR==1 {printf "validation: %s\n", $0; next} {printf "        %s\n", $0}' \
+        >> "$HERE/MANIFEST.txt"
+else
+    echo "validation: none - compile- and container-smoke-tested only, CI has no gfx1151" \
+        >> "$HERE/MANIFEST.txt"
+fi
 cat "$HERE/MANIFEST.txt"
 
 # LICENSE + THIRD-PARTY-NOTICES.md ship with the payload: it bundles MIT-licensed llama.cpp,

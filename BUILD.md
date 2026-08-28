@@ -104,6 +104,29 @@ The **stable channel is untouched**: `:vulkan`, `:hip` and the v0.x releases rem
 from validated on-box builds. Dev builds are compile- and packaging-tested only (the runner
 has no gfx1151), so promotion to stable stays a manual, benchmark-gated step.
 
+Do that promotion with [`ci/promote.sh`](ci/promote.sh) rather than by hand:
+
+```
+ci/promote.sh v0.7.2 <fork-sha> --validation ~/strix-results/<file>       # prints the plan
+ci/promote.sh v0.7.2 <fork-sha> --validation ~/strix-results/<file> --yes # uploads
+```
+
+It finds the `dev-*` release for that fork commit, refuses to continue unless the manifest's
+`source:` really is that commit and the manifest inside the tarball matches the one beside it,
+then repacks the tarball with a corrected manifest and attaches both to the v-tag. The payload
+bytes are the ones CI built; only `MANIFEST.txt` changes, and the dev tarball's sha256 is
+recorded in it so that is checkable after the fact.
+
+`--validation FILE` is what puts the `validation:` block back. The curated line exists *because*
+it is benchmark-gated, so a v-tag whose manifest cannot say what was tested has given up the only
+thing that distinguishes it from a dev build. v0.7.1 shipped `(automated dev build)` with no
+validation field; that is the hole this closes. Promoting without `--validation` writes
+`validation: not recorded` and warns, rather than silently omitting the field.
+
+`ci/build-payload.sh` takes the same input directly as `VALIDATION_FILE`, plus `BUILD_KIND` for
+the `Built ... (<kind>)` line, if you are building a curated payload locally instead of promoting
+a dev one.
+
 Stable releases are cut from a **pinned, individually validated commit**, never from
 whatever the branch tip happens to be. Every commit in `<previous payload sha>..<pinned sha>`
 ships with the release, so each one in that range needs at least a smoke test on the paths it
