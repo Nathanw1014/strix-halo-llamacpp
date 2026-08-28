@@ -388,6 +388,29 @@ grep -E "RssFile|RssAnon" /proc/$(pgrep -f llama-server)/status
 
 The table should show in the load log as `CPU_Mapped model buffer size`, never under `Vulkan0`.
 
+### `--tensor-read-lazy` (on by default since v0.7.2)
+
+```
+--tensor-read-lazy on|auto|off     (default: auto)
+```
+
+The engram table is gathered 16 random rows per token and never read densely, but the loader used
+to advise the whole mapping sequential, so the kernel read ahead 128 KiB for every ~130 bytes
+actually wanted. On a 64 GB box that cost 249.7 GiB of disk reads for a single 512 token prompt
+against a 152 GiB model, and the run was disk bound end to end.
+
+`auto` advises arch-marked gather tables over 4 GiB for random access and batches a prefetch of
+the rows the next ubatch will touch. Both halves matter: suppressing the kernel's readahead
+without replacing it is slower than leaving the mapping alone.
+
+Worth knowing before you rely on it:
+
+- the win **depends on the table not fitting in page cache**. On 64 GB it is 3.5x prefill; three
+  community 128 GB runs measured about 1.4x
+- it **shrinks with context depth**, 3.5x at depth 0 down to 2.5x at 32k
+- output is unchanged, gated byte-identical at temperature 0
+- `off` restores the pre-v0.7.2 behaviour exactly
+
 ### Best decode: fit the experts in GTT
 
 On a 64 GB box a Q3-class cut fits fully offloaded, which is the fastest decode configuration:
