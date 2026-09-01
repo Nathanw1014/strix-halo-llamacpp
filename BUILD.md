@@ -136,6 +136,23 @@ not yet validated, either validate them first or build from a release branch tha
 cherry-picks the validated work onto the previous payload base; `dev-build.yml` takes any
 ref via `workflow_dispatch`, so the pipeline needs no changes for that.
 
+One gate is **mandatory on every release candidate**, regardless of what changed:
+
+```
+tools/repeat_gate.py --bin <build>/bin/llama-server --model <model.gguf> --reps 6 -- <serving flags>
+```
+
+It sends the same greedy request N times into one server process and compares the responses
+to each other, sweeping four built-in prompt lengths (a single token of prompt length moves
+the ubatch boundaries and was measured flipping verdicts, so one prompt is a coin toss, not
+a gate). Run it on each model family the release headlines. It exists because every other
+gate in this repo's history — KLD packets, byte-identical greedy A/Bs, two-launch
+determinism controls — compares arms at the same request index and is structurally blind to
+output that drifts *with* request index; v0.7.2 shipped a 0/12 greedy-repeatability defect
+(the missing upstream #27812 pick) through all of them. PASS and WARN (rep-0-only, the
+warm-up signature upstream also shows) are acceptable; FAIL blocks the tag. Budget about
+5 minutes per build; on the shared box pass `--lock` so it respects the GPU bench lock.
+
 CI-specific deltas from the local recipe, all in `ci/build-payload.sh`:
 
 - **mesa/libdrm/shaderc are pinned** (`MESA_REF` / `LIBDRM_REF` / `SHADERC_REF` in the workflow
