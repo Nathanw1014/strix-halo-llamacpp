@@ -53,7 +53,7 @@ cp -P "$LIBDRM_DIR"/libdrm.so.2* "$LIBDRM_DIR"/libdrm_amdgpu.so.1* "$HERE/vulkan
 #   "does not have an 'api_version' field. Skipping ICD JSON"
 # and then "Found no drivers!", and llama.cpp silently falls back to the CPU backend.
 # Take it from Mesa's own generated manifest so it tracks the bundled driver.
-SRC_ICD="$(ls "$MESA_ICD_DIR"/radeon_devenv_icd.*.json "$MESA_ICD_DIR"/radeon_icd.*.json 2>/dev/null | head -1)"
+SRC_ICD="$(ls "$MESA_ICD_DIR"/radeon_devenv_icd.*.json "$MESA_ICD_DIR"/radeon_icd.*.json 2>/dev/null | head -1 || true)"   # ls exits 2 when one glob is unmatched; under pipefail that killed the script whenever only radeon_icd.*.json exists
 API_VERSION="$(sed -n 's/.*"api_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SRC_ICD" 2>/dev/null | head -1)"
 if [ -z "$API_VERSION" ]; then
     echo "ERROR: could not read api_version from Mesa's ICD manifest ($MESA_ICD_DIR)." >&2
