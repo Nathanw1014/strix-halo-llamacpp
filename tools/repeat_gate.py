@@ -90,6 +90,12 @@ def generate(port: int, prompt: str, predict: int, seed: int) -> str:
         # a server-side parse failure is itself a difference worth reporting
         LAST_STREAM.append([])
         return f"<<HTTP-{e.code}>>"
+    except (urllib.error.URLError, ConnectionError, OSError) as e:
+        # the server died mid-request (on this box usually an amdgpu command-submission OOM);
+        # report it as a distinct sentinel so the gate FAILs with a reason instead of crashing
+        print(f"  request failed: {type(e).__name__}: {e}", flush=True)
+        LAST_STREAM.append([])
+        return f"<<DISCONNECT:{type(e).__name__}>>"
     LAST_STREAM.append(probs_stream(js) if SUBTOKEN else [])
     return js["content"]
 
@@ -163,6 +169,10 @@ def check_subtoken(name: str, streams: list) -> str:
     return "DETECT"
 
 
+def sentinel_count(outs: list) -> int:
+    return sum(1 for o in outs if o.startswith("<<"))
+
+
 def first_diff(a: str, b: str) -> int:
     n = min(len(a), len(b))
     for i in range(n):
@@ -172,6 +182,10 @@ def first_diff(a: str, b: str) -> int:
 
 
 def check(name: str, outs: list[str]) -> str:
+    n_sent = sentinel_count(outs)
+    if n_sent:
+        print(f"[{name}] {n_sent}/{len(outs)} requests failed ({sorted({o for o in outs if o.startswith('<<')})}); the server died or refused mid-run, so this is not a repeatability verdict")
+        return "FAIL"
     uniq = len(set(outs))
     print(f"\n[{name}] {uniq} unique / {len(outs)} requests")
     for i, o in enumerate(outs):
