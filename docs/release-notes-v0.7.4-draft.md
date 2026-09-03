@@ -16,7 +16,7 @@ Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that al
 
 ## Changed defaults
 
-4. `GGML_VK_FA_WAVE32` (the flash-attention 32-wide subgroup pin) is now off by default. It reorders the FA reduction and moves about 2% of greedy tokens on dense models relative to upstream (KLD 0.0027) for about 1% prefill; with it off the dense path is bit-exact with upstream. `GGML_VK_FA_WAVE32=1` restores the previous behaviour. [perf figure from the bundle A/B to be appended]
+4. `GGML_VK_FA_WAVE32` (the flash-attention 32-wide subgroup pin) is now off by default. It reorders the FA reduction and moves about 2% of greedy tokens on dense models relative to upstream (KLD 0.0027) for about 1% prefill; with it off the dense path is bit-exact with upstream. `GGML_VK_FA_WAVE32=1` restores the previous behaviour. Measured cost of the new default: about 1% prefill on Qwen2.5-7B Q4_K_M at depth 0 (1422 vs 1410 t/s), none at 16k depth on Qwen3.8-27B UD-Q4_K_XL, decode unchanged.
 
 ## Corrections to the v0.7.3 notes
 
