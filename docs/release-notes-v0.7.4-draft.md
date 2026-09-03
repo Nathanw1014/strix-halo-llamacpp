@@ -14,6 +14,18 @@ Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that al
 
 3. The mul_mat_id q5_K/q4_K scale cache that bfc1eb47b (Jul 28) meant to disable was still compiled in on every build (an `#ifdef` guarding a macro defined as 0). Fixed with `#if`. Measured on Qwen3.6-35B-A3B UD-Q5_K_XL, same driver, 3 repetitions: pp512 at ub512 1400 to 1749 t/s (+25%), pp2048 at ub2048 1633 to 1789 t/s (+10%), decode unchanged. Models without q5_K/q4_K expert weights are unaffected.
 
+## Performance summary (v0.7.4 candidate vs v0.7.3, same driver, llama-bench, 3 repetitions)
+
+| model | shape | v0.7.3 | v0.7.4 candidate |
+|---|---|---|---|
+| Qwen3.8 Flash-Next Q3 | pp2048 / tg32 at depth 0, ub 512 | 440.8 / 32.5 | 436.9 / 32.5 |
+| Qwen3.8 Flash-Next Q3 | pp2048 / tg32 at 16k depth | 343.4 / 26.2 | 340.7 / 26.2 |
+| Qwen3.6-35B-A3B Q5_K_XL | pp2048 at ub 2048 | 1627 | 1782 (+9.5%, scale cache) |
+| Qwen3.6-35B-A3B Q5_K_XL | pp512 at ub 512 | 1400 | 1749 (+25%, scale cache; clean A/B) |
+| Qwen3.8-27B UD-Q4_K_XL | pp2048 at depth 0 / 16k, ub 256 | 378 / 305 | 374 / 281 (-1% / -8%) |
+| Qwen2.5-7B Q4_K_M | pp2048 at depth 0 / 16k, ub 256 | 1453 / 867 | 1395 / 632 (-4% / -27%) |
+Decode is unchanged on every model. The dense-model prefill loss at depth comes from the masked-V fix's presence in the cm1 flash-attention shader (measured by isolation: not its executed work, not the guard, not the scale cache, not the build) and, on Qwen2.5-7B only, from the wave32 default (about 11% of the 27%). Known cost, taken for repeatability; a shader-free form of the fix (zeroing the padded-tail cache rows) is the planned follow-up.
+
 ## Changed defaults
 
 4. `GGML_VK_FA_WAVE32` (the flash-attention 32-wide subgroup pin) is now off by default. It reorders the FA reduction and moves about 2% of greedy tokens on dense models relative to upstream (KLD 0.0027) for about 1% prefill; with it off the dense path is bit-exact with upstream. `GGML_VK_FA_WAVE32=1` restores the previous behaviour. Measured cost of the new default: about 1% prefill on Qwen2.5-7B Q4_K_M at depth 0 (1422 vs 1410 t/s), none at 16k depth on Qwen3.8-27B UD-Q4_K_XL, decode unchanged.
