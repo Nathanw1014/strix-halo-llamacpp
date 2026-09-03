@@ -39,6 +39,27 @@ This is the last release cut from Nathanw1014/llama.cpp as the primary home of t
 
 lhl (llm-tracker), for the repeatability report and the retest.
 
+## Staging build validation (2026-09-03, take 5)
+
+Bundle built from `release/v0.7.4-staging` (06cc547a2: all five changes above) with the CI cmake block and the same Mesa 26.3 driver as v0.7.3, so only llama.cpp changed. All gates run with `--subtoken 8` and the strict token gate, on an otherwise idle GPU:
+
+| gate | result |
+|---|---|
+| four-prompt sweep, 6 requests each | 1 unique on every prompt; logprob streams identical (48 positions x 9 candidates) |
+| WikiText 1024 token prompt, 16 requests, 129 token continuations | 1 unique; logprob streams identical (129 x 9) |
+| WikiText 31.7k token prompt, 4 requests, 48 token continuations | 1 unique; logprob streams identical |
+| the 1024 x16 shape inside the container image, empty environment | 1 unique; logprob streams identical |
+
+Same shapes on the builds this release replaces: v0.7.3 gives 5 to 6 unique at the 1024 x16 shape, upstream master gives 6 (129 tokens) and 2 of 4 at 32k.
+
+## Where this work goes next
+
+This is the last release cut from Nathanw1014/llama.cpp as the primary home of the Vulkan work. The stack (the Strix Halo Vulkan fixes, the Flash-Next and DeepSeek V4 paths, the repeatability gates) is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it will be maintained with the other Strix Halo contributors; the commits are being staged there now with their original authorship. The toolbox and its portable bundle will track that fork. Issues and pull requests for the Vulkan stack should go to halo-box from here on.
+
+## Credit
+
+lhl (llm-tracker), for the repeatability report and the retest.
+
 ## Staging build validation (2026-09-03)
 
 Bundle built from `release/v0.7.4-staging` (8f8df23) with the CI cmake block and the same Mesa 26.3 driver as v0.7.3, so only llama.cpp changed. All gates run with `--subtoken 8` and the strict token gate:
