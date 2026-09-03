@@ -139,8 +139,21 @@ ref via `workflow_dispatch`, so the pipeline needs no changes for that.
 One gate is **mandatory on every release candidate**, regardless of what changed:
 
 ```
-tools/repeat_gate.py --bin <build>/bin/llama-server --model <model.gguf> --reps 6 -- <serving flags>
+tools/repeat_gate.py --bin <build>/bin/llama-server --model <model.gguf> --reps 6 --subtoken 8 -- <serving flags>
+tools/repeat_gate.py --bin <build>/bin/llama-server --model <model.gguf> --reps 16 --predict 129 --subtoken 8 --prompt-file tools/prompts/prose-1024-wikitext.txt -- <serving flags> -c 4096
+tools/repeat_gate.py --bin <build>/bin/llama-server --model <model.gguf> --reps 4 --predict 48 --subtoken 8 --prompt-file tools/prompts/prose-32k-wikitext.txt -- <serving flags> -c 33280
 ```
+
+Use REAL PROSE for the file-driven shapes (the shipped WikiText prompts): the built-in sweep is a repeated sentence, whose continuation has almost no near-tie tokens, and it read clean on a build that was not (that is how the v0.7.3 notes came to overstate the fix). Three shapes, all mandatory: the four-prompt sweep, the 1024-token x16 x129 shape (the one the
+hipEngine survey used), and a 32k-token prompt (the top-k order defect only expresses above the
+2051-cell selection width, so a short prompt is blind to it by construction). `--subtoken N` adds
+the sub-token detector: it requests `n_probs=N` and compares the full per-position logprob
+streams across the identical requests, so a ULP-scale difference is caught even when no token
+happens to flip (token counting only registers a difference once it lands on a near-tie, which
+made 1-of-8 look clean on a build that was not). Verdict `SUBTOKEN GATE: QUIET` is required;
+`DETECT` fails the gate. The reported position is indicative only (the server aliases early
+positions' logprobs under graph reuse); the verdict is exact. Run the pure-upstream control
+through the same three shapes so the release notes can say what upstream does on the same box.
 
 It sends the same greedy request N times into one server process and compares the responses
 to each other, sweeping four built-in prompt lengths (a single token of prompt length moves

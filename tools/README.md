@@ -92,3 +92,10 @@ cross-backend wall-clock off traced runs.
 
 Background, and the findings these produced: [EXPLORING.md](../EXPLORING.md), particularly
 *Instrumentation* and *Dense prefill: a worked example of localising a gap*.
+
+`repeat_gate.py --subtoken N` (2026-09-03): sub-token detector. Requests `n_probs=N` on every
+identical greedy request and compares the per-position logprob streams exactly; `SUBTOKEN GATE:
+QUIET` or `DETECT` (exit 1). Catches ULP-scale non-repeatability before it flips a token. Also
+`--cache-prompt` (server-default prompt reuse instead of a forced re-prefill) and `--prompt-file`
+for the 1024-token and 32k shapes. Per-request streams are saved as `<prompt>.probs.json` with
+`--save-dir`.
