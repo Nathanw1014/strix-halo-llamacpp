@@ -1,12 +1,14 @@
 # v0.7.4 (draft, staging branch; not released)
 
-Two Vulkan shader fixes on top of v0.7.3, both for defects that also exist in upstream llama.cpp, plus one performance fix that restores a win the fork had measured but never shipped. Numbers are N identical greedy requests into one llama-server on Strix Halo (gfx1151), Qwen 3.8 Flash-Next Q3 with f16 PLE.
+Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that also exist in upstream llama.cpp), plus one performance fix that restores a win the fork had measured but never shipped. Numbers are N identical greedy requests into one llama-server on Strix Halo (gfx1151), Qwen 3.8 Flash-Next Q3 with f16 PLE.
 
 ## Fixed
 
 1. Masked-V leak in the cm1 flash attention shader. A fully masked column has P = +0.0, but P times V takes V's sign, stale cache cells feed -0.0 into the accumulator, and gfx11 WMMA does not add -0.0 exactly, so output depended on what the previous request left in the cache. Fix: per-column visibility mask built during the mask load, V zeroed for fully masked columns, staged path only for partially masked blocks. 1024 token prompt, 16 tries, 129 token continuations: v0.7.3 gave 5 to 6 distinct, v0.7.4 gives 16 identical. Also present in upstream (master: 3 to 6 of 16 on the same prompt); reported.
 
 2. Top-k slot order race in the radix select (upstream #28032, in the fork since Aug 31). Output slots were assigned with atomicAdd, so the sparse selection came out in a scheduling-dependent order and the noise cascaded into late token flips above 2051 prompt tokens. Fix: deterministic per-chunk scan, ascending index order. 32k prompt, 4 tries: 2 to 3 distinct before, 4 identical after; prefill and decode at 16k depth within noise. Also present in upstream master; reported.
+
+5. Flash-attention dequant-once fast path read some K/V layouts in the wrong order. The guard that routes K/V into the dequant scratch only checked element stride and contiguous allocation, while the shader assumes heads packed inside the KV stride; heads-outer q8_0/q4_0/iq4_nl caches and the MiniMax-M3 MSA batch view produced wrong attention output at default f16 KV. The guard now pins the layout, ten test-backend-ops cases cover it (the old guard fails 5 of them with errors of 1.5 to 1.9 against a 0.0005 tolerance; the fix passes all), and the repeat gates are unchanged. Standard layouts keep the fast path.
 
 ## Performance
 
