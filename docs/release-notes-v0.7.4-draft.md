@@ -12,6 +12,10 @@ Two Vulkan shader fixes on top of v0.7.3, both for defects that also exist in up
 
 3. The mul_mat_id q5_K/q4_K scale cache that bfc1eb47b (Jul 28) meant to disable was still compiled in on every build (an `#ifdef` guarding a macro defined as 0). Fixed with `#if`. Measured on Qwen3.6-35B-A3B UD-Q5_K_XL, same driver, 3 repetitions: pp512 at ub512 1400 to 1749 t/s (+25%), pp2048 at ub2048 1633 to 1789 t/s (+10%), decode unchanged. Models without q5_K/q4_K expert weights are unaffected.
 
+## Changed defaults
+
+4. `GGML_VK_FA_WAVE32` (the flash-attention 32-wide subgroup pin) is now off by default. It reorders the FA reduction and moves about 2% of greedy tokens on dense models relative to upstream (KLD 0.0027) for about 1% prefill; with it off the dense path is bit-exact with upstream. `GGML_VK_FA_WAVE32=1` restores the previous behaviour. [perf figure from the bundle A/B to be appended]
+
 ## Corrections to the v0.7.3 notes
 
 - v0.7.3 did not fix the repeatability report; it fixed the progressive drift (missing upstream #27812) and reached upstream's own repeatability level at the reporter's shape.

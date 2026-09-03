@@ -145,7 +145,7 @@ stack: they understate the current artifacts rather than overstate them.
   `coopMatLoad` out of the `hsv_tile` loop, store `Psh` query-major so the GEMM2 A load vectorizes,
   and pin a 32-wide subgroup where narrowing is free. Combined, +2.8 to +3.1% at d0 rising to
   +21.6 to +22.0% at d32768 on Coder-30B (pp2048/ub2048), consistent across f16/q8_0/q4_0 KV, with
-  decode unchanged. The subgroup pin is the `GGML_VK_FA_WAVE32` knob (see Recommended flags).
+  decode unchanged. The subgroup pin is the `GGML_VK_FA_WAVE32` knob (see Recommended flags). From v0.7.4 it is off by default: it reorders the FA reduction and moves about 2% of greedy tokens on dense models relative to upstream for about 1% prefill; set `GGML_VK_FA_WAVE32=1` to opt back in.
 - **Vulkan: route non-native FA K/V types through the dequant-once path.** `iq4_nl` has no native
   FA shader on the scalar/coopmat1 paths, and outside the dequant-once path the shader read
   garbage. `ggml_vk_fa_kv_native()` is now the single source of truth for native K/V types and
