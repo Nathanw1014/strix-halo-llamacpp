@@ -151,7 +151,9 @@ the sub-token detector: it requests `n_probs=N` and compares the full per-positi
 streams across the identical requests, so a ULP-scale difference is caught even when no token
 happens to flip (token counting only registers a difference once it lands on a near-tie, which
 made 1-of-8 look clean on a build that was not). Verdict `SUBTOKEN GATE: QUIET` is required;
-`DETECT` fails the gate. The reported position is indicative only (the server aliases early
+`DETECT` fails the gate. The token-level gate is strict: a difference confined to the first request
+is a FAIL, not a warm-up WARN (that shape is the masked-V leak, and the old WARN category is what let
+it through before v0.7.3; `--allow-warmup` restores the old semantics for comparisons only). The reported position is indicative only (the server aliases early
 positions' logprobs under graph reuse); the verdict is exact. Run the pure-upstream control
 through the same three shapes so the release notes can say what upstream does on the same box.
 

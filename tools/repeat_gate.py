@@ -202,6 +202,7 @@ def main() -> int:
     ap.add_argument("--predict", type=int, default=48)
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--cache-prompt", action="store_true", help="send cache_prompt:true (server default) instead of forcing a re-prefill")
+    ap.add_argument("--allow-warmup", action="store_true", help="old semantics: a rep-0-only difference is WARN (exit 0). Default is strict: any difference FAILS, because the rep-0-only shape is the masked-V leak, not warm-up")
     ap.add_argument("--subtoken", type=int, default=0, metavar="N", help="also request n_probs=N and gate on the per-position logprob streams (sub-token detector); DETECT fails the gate")
     ap.add_argument("--port", type=int, default=8099)
     ap.add_argument("--save-dir", default=os.environ.get("REPEAT_GATE_SAVE_DIR"),
@@ -279,8 +280,11 @@ def main() -> int:
         print("REPEAT GATE: FAIL - identical requests produced different output")
         return 1
     if "WARN" in verdicts:
-        print("REPEAT GATE: WARN - only the first request differs (warm-up signature)")
-        return sub_rc
+        if args.allow_warmup:
+            print("REPEAT GATE: WARN - only the first request differs (allowed by --allow-warmup)")
+            return sub_rc
+        print("REPEAT GATE: FAIL - only the first request differs; that is request-order dependence (masked-V leak class), not warm-up. Use --allow-warmup for the old WARN semantics")
+        return 1
     print("REPEAT GATE: PASS - all requests byte-identical")
     return sub_rc
 
