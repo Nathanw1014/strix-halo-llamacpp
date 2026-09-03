@@ -24,3 +24,16 @@ Numerics switches (`GGML_VK_FA_WAVE32`, the delta-net l2norm identity) are uncha
 ## Credit
 
 lhl (llm-tracker), for the repeatability report and the retest.
+
+## Staging build validation (2026-09-03)
+
+Bundle built from `release/v0.7.4-staging` (8f8df23) with the CI cmake block and the same Mesa 26.3 driver as v0.7.3, so only llama.cpp changed. All gates run with `--subtoken 8` and the strict token gate:
+
+| gate | result |
+|---|---|
+| four-prompt sweep, 6 requests each | 1 unique on every prompt; logprob streams identical |
+| WikiText 1024 token prompt, 16 requests, 129 token continuations | 1 unique; logprob streams identical (129 positions x 9 candidates) |
+| WikiText 31.7k token prompt, 4 requests, 48 token continuations | 1 unique; logprob streams identical |
+| the same 1024 x16 shape inside the container image, empty environment | 1 unique; logprob streams identical |
+
+Same shapes on the builds this release replaces: v0.7.3 gives 5 to 6 unique at the 1024 x16 shape, upstream master gives 6 (129 tokens) and 2 of 4 at 32k.
