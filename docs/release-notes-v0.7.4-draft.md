@@ -4,7 +4,7 @@ Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that al
 
 ## Fixed
 
-1. Masked-V leak in the cm1 flash attention shader. A fully masked column has P = +0.0, but P times V takes V's sign, stale cache cells feed -0.0 into the accumulator, and gfx11 WMMA does not add -0.0 exactly, so output depended on what the previous request left in the cache. Fix: per-column visibility mask built during the mask load, V zeroed for fully masked columns, staged path only for partially masked blocks. 1024 token prompt, 16 tries, 129 token continuations: v0.7.3 gave 5 to 6 distinct, v0.7.4 gives 16 identical. Also present in upstream (master: 3 to 6 of 16 on the same prompt); reported.
+1. Output depended on stale KV cache cells (masked-V leak). A fully masked flash attention column has P = +0.0, but P times V takes V's sign, stale cache cells feed -0.0 into the accumulator, and gfx11 WMMA does not add -0.0 exactly, so output depended on what the previous request left in the cache. 1024 token prompt, 16 identical greedy requests, 129 token continuations: v0.7.3 gives 5 to 6 distinct on Qwen3.8 Flash-Next and alternates between two continuations on Qwen2.5-7B with plain f16 KV; v0.7.4 gives 16 identical on both, byte identical to a fresh server's first request on both. Fix: the KV cache keeps every free cell at zero. Cells are zeroed in every layer at the moment they are freed, so a masked-out cell never holds anything to leak. No shader change, no per-token work, no graph nodes. Not covered: masked-out cells that belong to another sequence in a unified multi-sequence cache (--kv-unified with more than one slot); that case needs the shader-side fix, which is not shipped. Also present in upstream (master: 3 to 6 of 16 on the same prompt); reported.
 
 2. Top-k slot order race in the radix select (upstream #28032, in the fork since Aug 31). Output slots were assigned with atomicAdd, so the sparse selection came out in a scheduling-dependent order and the noise cascaded into late token flips above 2051 prompt tokens. Fix: deterministic per-chunk scan, ascending index order. 32k prompt, 4 tries: 2 to 3 distinct before, 4 identical after; prefill and decode at 16k depth within noise. Also present in upstream master; reported.
 
@@ -14,17 +14,17 @@ Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that al
 
 3. The mul_mat_id q5_K/q4_K scale cache that bfc1eb47b (Jul 28) meant to disable was still compiled in on every build (an `#ifdef` guarding a macro defined as 0). Fixed with `#if`. Measured on Qwen3.6-35B-A3B UD-Q5_K_XL, same driver, 3 repetitions: pp512 at ub512 1400 to 1749 t/s (+25%), pp2048 at ub2048 1633 to 1789 t/s (+10%), decode unchanged. Models without q5_K/q4_K expert weights are unaffected.
 
-## Performance summary (v0.7.4 candidate vs v0.7.3, same driver, llama-bench, 3 repetitions)
+## Performance summary (v0.7.4 candidate vs v0.7.3, same driver, llama-bench, 3 repetitions, controls run back to back)
 
-| model | shape | v0.7.3 | v0.7.4 candidate |
-|---|---|---|---|
-| Qwen3.8 Flash-Next Q3 | pp2048 / tg32 at depth 0, ub 512 | 440.8 / 32.5 | 436.9 / 32.5 |
-| Qwen3.8 Flash-Next Q3 | pp2048 / tg32 at 16k depth | 343.4 / 26.2 | 340.7 / 26.2 |
-| Qwen3.6-35B-A3B Q5_K_XL | pp2048 at ub 2048 | 1627 | 1782 (+9.5%, scale cache) |
-| Qwen3.6-35B-A3B Q5_K_XL | pp512 at ub 512 | 1400 | 1749 (+25%, scale cache; clean A/B) |
-| Qwen3.8-27B UD-Q4_K_XL | pp2048 at depth 0 / 16k, ub 256 | 378 / 305 | 374 / 281 (-1% / -8%) |
-| Qwen2.5-7B Q4_K_M | pp2048 at depth 0 / 16k, ub 256 | 1453 / 867 | 1395 / 711 (-4% / -18%, wave32 pin kept on) |
-Decode is unchanged on every model. The dense-model prefill loss at depth comes from the masked-V fix's presence in the cm1 flash-attention shader (measured by isolation: not its executed work, not the guard, not the scale cache, not the build). A shader-free form of the fix (zeroing the padded-tail cache rows) is in progress for this release.
+| model | depth | pp2048 v0.7.4c | pp2048 v0.7.3 | Δ | tg32 v0.7.4c | tg32 v0.7.3 | Δ |
+|---|---|---|---|---|---|---|---|
+| Qwen2.5-7B Q4_K_M (dense, ub256) | d0 | 1458.9 ± 0.8 | 1448.4 ± 14.9 | +0.7% | 47.9 ± 0.0 | 47.7 ± 0.2 | +0.4% |
+| Qwen2.5-7B Q4_K_M (dense, ub256) | d16k | 866.5 ± 3.3 | 864.9 ± 4.9 | +0.2% | 39.6 ± 0.2 | 39.2 ± 0.1 | +1.1% |
+| Qwen3.8-27B UD-Q4_K_XL (dense, ub256) | d16k | 304.7 ± 1.0 | 304.3 ± 0.8 | +0.2% | 11.6 ± 0.0 | 11.6 ± 0.0 | -0.1% |
+| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d0 | 440.1 ± 5.1 | 438.8 ± 4.8 | +0.3% | 32.5 ± 0.2 | 32.4 ± 0.2 | +0.4% |
+| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d16k | 352.4 ± 3.1 | 343.0 ± 0.9 | +2.8% | 26.1 ± 0.1 | 26.2 ± 0.2 | -0.4% |
+
+Every cell is at parity within noise. The Flash-Next d16k control is the v0.7.3 cell measured earlier the same day (343.0 ± 0.9 pp, 26.2 tg), not back to back. The earlier candidate carried the fix inside the cm1 flash attention shader and lost 8 to 18% dense prefill at depth by the shader's mere presence (measured by isolation: not its executed work, not the guard, not the scale cache, not the build). That form is dropped; the shipped fix touches only the KV cache.
 
 ## Corrections to the v0.7.3 notes
 
@@ -47,36 +47,16 @@ This is the last release cut from Nathanw1014/llama.cpp as the primary home of t
 
 lhl (llm-tracker), for the repeatability report and the retest.
 
-## Staging build validation (2026-09-03, take 5)
+## Staging build validation (2026-09-03, take 6)
 
-Bundle built from `release/v0.7.4-staging` (06cc547a2: all five changes above) with the CI cmake block and the same Mesa 26.3 driver as v0.7.3, so only llama.cpp changed. All gates run with `--subtoken 8` and the strict token gate, on an otherwise idle GPU:
+Build: release/v0.7.4-staging f30f867d8, CI flags, assembled with the shipped v0.7.3 Mesa 26.3 driver; bundle at /mnt/data/rel-ab/v0.7.4-staging (tarball, MANIFEST, local image strix-halo-llamacpp:vulkan-v0.7.4-staging). Nothing pushed, tagged or released.
 
-| gate | result |
-|---|---|
-| four-prompt sweep, 6 requests each | 1 unique on every prompt; logprob streams identical (48 positions x 9 candidates) |
-| WikiText 1024 token prompt, 16 requests, 129 token continuations | 1 unique; logprob streams identical (129 x 9) |
-| WikiText 31.7k token prompt, 4 requests, 48 token continuations | 1 unique; logprob streams identical |
-| the 1024 x16 shape inside the container image, empty environment | 1 unique; logprob streams identical |
+Gates on the assembled launcher (16 identical greedy requests unless stated, per-position top-8 logprob streams compared):
 
-Same shapes on the builds this release replaces: v0.7.3 gives 5 to 6 unique at the 1024 x16 shape, upstream master gives 6 (129 tokens) and 2 of 4 at 32k.
+- Qwen2.5-7B, 1024-token prompt, 129 tokens: 16/16 identical, logprob streams identical.
+- Qwen3.8 Flash-Next, sweep (2 prompts x 6): identical.
+- Qwen3.8 Flash-Next, 1024-token prompt, 129 tokens: 16/16 identical.
+- Qwen3.8 Flash-Next, 32k prose prompt, 48 tokens x 4: identical.
+- Clean room (the take-6 image, docker's empty environment, bundled driver only), Flash-Next 1024 x 16: identical.
 
-## Where this work goes next
-
-This is the last release cut from Nathanw1014/llama.cpp as the primary home of the Vulkan work. The stack (the Strix Halo Vulkan fixes, the Flash-Next and DeepSeek V4 paths, the repeatability gates) is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it will be maintained with the other Strix Halo contributors; the commits are being staged there now with their original authorship. The toolbox and its portable bundle will track that fork. Issues and pull requests for the Vulkan stack should go to halo-box from here on.
-
-## Credit
-
-lhl (llm-tracker), for the repeatability report and the retest.
-
-## Staging build validation (2026-09-03)
-
-Bundle built from `release/v0.7.4-staging` (8f8df23) with the CI cmake block and the same Mesa 26.3 driver as v0.7.3, so only llama.cpp changed. All gates run with `--subtoken 8` and the strict token gate:
-
-| gate | result |
-|---|---|
-| four-prompt sweep, 6 requests each | 1 unique on every prompt; logprob streams identical |
-| WikiText 1024 token prompt, 16 requests, 129 token continuations | 1 unique; logprob streams identical (129 positions x 9 candidates) |
-| WikiText 31.7k token prompt, 4 requests, 48 token continuations | 1 unique; logprob streams identical |
-| the same 1024 x16 shape inside the container image, empty environment | 1 unique; logprob streams identical |
-
-Same shapes on the builds this release replaces: v0.7.3 gives 5 to 6 unique at the 1024 x16 shape, upstream master gives 6 (129 tokens) and 2 of 4 at 32k.
+Sanity bench on the assembled launcher, Qwen2.5-7B d0 ub256: pp2048 1441.9 ± 2.8, tg32 47.9 ± 0.2 (v0.7.3 bundle, same driver: 1453.1, 47.7).
