@@ -49,7 +49,7 @@ lhl (llm-tracker), for the repeatability report and the retest.
 
 ## Staging build validation (2026-09-03, take 6)
 
-Build: release/v0.7.4-staging f30f867d8, CI flags, assembled with the shipped v0.7.3 Mesa 26.3 driver; bundle at /mnt/data/rel-ab/v0.7.4-staging (tarball, MANIFEST, local image strix-halo-llamacpp:vulkan-v0.7.4-staging). Nothing pushed, tagged or released.
+Build: release/v0.7.4-staging ea35c5066, CI flags, assembled with the shipped v0.7.3 Mesa 26.3 driver; bundle at /mnt/data/rel-ab/v0.7.4-staging (tarball, MANIFEST, local image strix-halo-llamacpp:vulkan-v0.7.4-staging). Nothing pushed, tagged or released.
 
 Gates on the assembled launcher (16 identical greedy requests unless stated, per-position top-8 logprob streams compared):
 
