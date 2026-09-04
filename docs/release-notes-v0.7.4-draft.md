@@ -59,7 +59,7 @@ Numerics switches (`GGML_VK_FA_WAVE32`, the delta-net l2norm identity) are uncha
 
 ## Where this work goes next
 
-This is the last release cut from Nathanw1014/llama.cpp as the primary home of the Vulkan work. The stack (the Strix Halo Vulkan fixes, the Flash-Next and DeepSeek V4 paths, the repeatability gates) is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it will be maintained with the other Strix Halo contributors; the commits are being staged there now with their original authorship. The toolbox and its portable bundle will track that fork. Issues and pull requests for the Vulkan stack should go to halo-box from here on.
+The Vulkan work is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it will be maintained with the other Strix Halo contributors; the commits are being staged there with their original authorship, and the correctness fixes in this release will be the first pull request. Releases here continue while that happens, and the toolbox and its portable bundle will track whichever tree carries the work. Issues and pull requests for the Vulkan stack are welcome at halo-box from here on.
 
 ## Credit
 
