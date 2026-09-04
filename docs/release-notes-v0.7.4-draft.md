@@ -63,7 +63,7 @@ This is the last release cut from Nathanw1014/llama.cpp as the primary home of t
 
 ## Credit
 
-lhl (llm-tracker), for the repeatability report and the retest.
+lhl (shisa.ai), for the repeatability report that set the shape we test at.
 
 ## Staging build validation (2026-09-03, take 6, local assemble)
 
