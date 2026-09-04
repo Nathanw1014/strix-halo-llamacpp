@@ -1,6 +1,6 @@
 # v0.7.4 (draft, staging branch; not released)
 
-Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that also exist in upstream llama.cpp), plus one performance fix that restores a win the fork had measured but never shipped. Numbers are N identical greedy requests into one llama-server on Strix Halo (gfx1151), Qwen 3.8 Flash-Next Q3 with f16 PLE.
+Three correctness fixes on top of v0.7.3 (one in the KV cache, two in the Vulkan backend; two of the three defects also exist in upstream llama.cpp), plus one performance fix that restores a win the fork had measured but never shipped. Numbers are N identical greedy requests into one llama-server on Strix Halo (gfx1151), Qwen 3.8 Flash-Next Q3 with f16 PLE.
 
 ## Fixed
 
@@ -8,15 +8,15 @@ Three Vulkan correctness fixes on top of v0.7.3 (two of them for defects that al
 
 2. Top-k slot order race in the radix select (upstream #28032, in the fork since Aug 31). Output slots were assigned with atomicAdd, so the sparse selection came out in a scheduling-dependent order and the noise cascaded into late token flips above 2051 prompt tokens. Fix: deterministic per-chunk scan, ascending index order. 32k prompt, 4 tries: 2 to 3 distinct before, 4 identical after; prefill and decode at 16k depth within noise. Also present in upstream master; reported.
 
-5. Flash-attention dequant-once fast path read some K/V layouts in the wrong order. The guard that routes K/V into the dequant scratch only checked element stride and contiguous allocation, while the shader assumes heads packed inside the KV stride; heads-outer q8_0/q4_0/iq4_nl caches and the MiniMax-M3 MSA batch view produced wrong attention output at default f16 KV. The guard now pins the layout, ten test-backend-ops cases cover it (the old guard fails 5 of them with errors of 1.5 to 1.9 against a 0.0005 tolerance; the fix passes all), and the repeat gates are unchanged. Standard layouts keep the fast path.
+3. Flash-attention dequant-once fast path read some K/V layouts in the wrong order. The guard that routes K/V into the dequant scratch only checked element stride and contiguous allocation, while the shader assumes heads packed inside the KV stride; heads-outer q8_0/q4_0/iq4_nl caches and the MiniMax-M3 MSA batch view produced wrong attention output at default f16 KV. The guard now pins the layout, ten test-backend-ops cases cover it (the old guard fails 5 of them with errors of 1.5 to 1.9 against a 0.0005 tolerance; the fix passes all), and the repeat gates are unchanged. Standard layouts keep the fast path.
 
 ## Performance
 
-3. The mul_mat_id q5_K/q4_K scale cache that bfc1eb47b (Jul 28) meant to disable was still compiled in on every build (an `#ifdef` guarding a macro defined as 0). Fixed with `#if`. Measured on Qwen3.6-35B-A3B UD-Q5_K_XL, same driver, 3 repetitions: pp512 at ub512 1400 to 1749 t/s (+25%), pp2048 at ub2048 1633 to 1789 t/s (+10%), decode unchanged. Models without q5_K/q4_K expert weights are unaffected.
+4. The mul_mat_id q5_K/q4_K scale cache that bfc1eb47b (Jul 28) meant to disable was still compiled in on every build (an `#ifdef` guarding a macro defined as 0). Fixed with `#if`. Measured on Qwen3.6-35B-A3B UD-Q5_K_XL, same driver, 3 repetitions: pp512 at ub512 1400 to 1749 t/s (+25%), pp2048 at ub2048 1633 to 1789 t/s (+10%), decode unchanged. Models without q5_K/q4_K expert weights are unaffected.
 
-## Performance summary (v0.7.4 candidate vs v0.7.3, same driver, llama-bench, 3 repetitions, controls run back to back)
+## Performance summary (v0.7.4 vs v0.7.3, same driver, llama-bench, 3 repetitions, controls run back to back)
 
-| model | depth | pp2048 v0.7.4c | pp2048 v0.7.3 | Δ | tg32 v0.7.4c | tg32 v0.7.3 | Δ |
+| model | depth | pp2048 v0.7.4 | pp2048 v0.7.3 | change | tg32 v0.7.4 | tg32 v0.7.3 | change |
 |---|---|---|---|---|---|---|---|
 | Qwen2.5-7B Q4_K_M (dense, ub256) | d0 | 1458.9 ± 0.8 | 1448.4 ± 14.9 | +0.7% | 47.9 ± 0.0 | 47.7 ± 0.2 | +0.4% |
 | Qwen2.5-7B Q4_K_M (dense, ub256) | d16k | 866.5 ± 3.3 | 864.9 ± 4.9 | +0.2% | 39.6 ± 0.2 | 39.2 ± 0.1 | +1.1% |
@@ -33,11 +33,29 @@ Every cell is at parity within noise. The Flash-Next d16k control is the v0.7.3 
 
 ## Gate changes (tools/repeat_gate.py, tools/prompts/, BUILD.md)
 
-The previous repeatability prompt was one sentence repeated, whose continuation has almost no near-tie tokens; it read clean on a build that was not. The mandatory gate now runs real prose (a 1024 token WikiText article and a 31.7k token slice), 129 token continuations, a 32k prompt, `--subtoken 8` (compares the full per-position logprob streams and fails on any difference), and a pure-upstream control on the same box. Results for this build and for upstream master are in the release checklist output.
+The previous repeatability prompt was one sentence repeated, whose continuation has almost no near-tie tokens; it read clean on a build that was not. The mandatory gate now runs real prose (a 1024 token WikiText article and a 31.7k token slice), 129 token continuations, a 32k prompt, `--subtoken 8` (compares the full per-position logprob streams and fails on any difference), and a pure-upstream control on the same box. Results for this build are in the validation section below; upstream master's are in the reproduction section.
+
+## Reproducing the repeatability defects (upstream master included)
+
+Both defects are visible with stock llama-server on gfx1151 with `-fa on`, one slot, greedy sampling, real text. The shape matters:
+
+- Prompt length not a multiple of 256 tokens. The KV window is padded to 256, and the rows between the prompt's end and the pad hold the previous request's generation; a 1024-token article that tokenizes to 1045 leaves 235 such rows. A prompt that lands exactly on a multiple of 256 hides the defect during the prompt and only exposes it during decode.
+- Continuation of 129 tokens or more, and at least 8 identical requests; 16 is what we run. On Qwen3.8 Flash-Next upstream master gives 3 to 6 distinct continuations of 16 at this shape (v0.7.3: 5 to 6).
+- Dense f16 KV models rarely flip a token within 129 tokens. Request `n_probs` (we use 8) and compare the per-position logprob streams instead: on Qwen2.5-7B, upstream master returns identical tokens over 8 requests while every request after the first differs in logprobs from the first generated token on (top-token logprob -0.2150, -0.2044, -0.2060 across three full re-prefills of the same prompt, `cache_prompt` false and `--cache-ram 0`). A distinct-output count cannot see this form.
+- The top-k order race needs Qwen3.8 Flash-Next and more than 2051 prompt tokens: with a 31.7k-token prompt and 4 identical requests of 48 tokens, upstream master gives 2 to 3 distinct continuations.
+
+`tools/repeat_gate.py` does all of this (launches the server, sends N identical requests, compares tokens and logprob streams, exits non-zero on any difference); the prompts are in `tools/prompts/`:
+
+```
+python3 tools/repeat_gate.py --bin ./vulkan/llama-server --model <model.gguf> --reps 16 --predict 129 --subtoken 8 --prompt-file tools/prompts/prose-1024-wikitext.txt -- -ngl 99 -fa on -b 2048 -ub 512 -c 4096
+python3 tools/repeat_gate.py --bin ./vulkan/llama-server --model <Qwen3.8-Flash-Next.gguf> --reps 4 --predict 48 --subtoken 8 --prompt-file tools/prompts/prose-32k-wikitext.txt -- -ngl 99 --n-cpu-moe 0 -fa on -b 2048 -ub 512 -c 33280
+```
+
+Expected on v0.7.4: `REPEAT GATE: PASS` and `SUBTOKEN GATE: QUIET` for both.
 
 ## Not changed
 
-Numerics switches (`GGML_VK_FA_WAVE32`, the delta-net l2norm identity) are unchanged; they move bits relative to upstream, not correctness. The MMID_QK_SCACHE `#ifdef` and the ragged-block QSA policy remain as recorded candidates for a later release.
+Numerics switches (`GGML_VK_FA_WAVE32`, the delta-net l2norm identity) are unchanged; they move bits relative to upstream, not correctness. The ragged-block QSA policy (the reference implementation's extra r - 1 slots) remains a recorded candidate for a later release.
 
 ## Where this work goes next
 
@@ -47,9 +65,9 @@ This is the last release cut from Nathanw1014/llama.cpp as the primary home of t
 
 lhl (llm-tracker), for the repeatability report and the retest.
 
-## Staging build validation (2026-09-03, take 6)
+## Staging build validation (2026-09-03, take 6, local assemble)
 
-Build: release/v0.7.4-staging ea35c5066, CI flags, assembled with the shipped v0.7.3 Mesa 26.3 driver; bundle at /mnt/data/rel-ab/v0.7.4-staging (tarball, MANIFEST, local image strix-halo-llamacpp:vulkan-v0.7.4-staging). Nothing pushed, tagged or released.
+Build: release/v0.7.4-staging ea35c5066, CI flags, assembled locally with the shipped v0.7.3 Mesa 26.3 driver. The CI artifact (dev build of the same commit) gets the same gates before promotion; those results replace this section in the release body.
 
 Gates on the assembled launcher (16 identical greedy requests unless stated, per-position top-8 logprob streams compared):
 
