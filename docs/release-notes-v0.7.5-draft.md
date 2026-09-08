@@ -33,7 +33,7 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 
 ## Compatibility
 
-- Slot-save files (`--slot-save-path`) written by v0.7.4 or earlier for Qwen3.8 Flash-Next do not restore into v0.7.5: the indexer cache's V is now one element wide, so the saved state has a different shape. [PENDING: verify the restore fails cleanly rather than crashing.] The in-process prompt cache is unaffected.
+- Slot-save files (`--slot-save-path`) written by v0.7.4 or earlier for Qwen3.8 Flash-Next do not restore into v0.7.5: the indexer cache's V is now one element wide, so the saved state has a different shape. The restore fails with a logged "mismatched value type" error and the load returns 0 (`llama_kv_cache::state_read_data` checks type, row size and GQA width per layer before touching the cache), so the server reports the slot as not restored and the request re-prefills. The in-process prompt cache is unaffected.
 
 ## Gates run on this build
 
