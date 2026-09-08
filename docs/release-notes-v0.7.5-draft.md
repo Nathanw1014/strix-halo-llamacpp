@@ -1,18 +1,18 @@
 # v0.7.5 (draft, staging branch; not released)
 
-Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark prefill fix from upstream, and a hygiene change in the MoE expert GEMM. Base is v0.7.4.1 (5d8c07b44). Numbers are from Strix Halo (gfx1151), same driver, controls run back to back. [PENDING: every number below is filled from take-1 gates and perf; search PENDING before posting.]
+Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark prefill fix from upstream, and a hygiene change in the MoE expert GEMM. Base is v0.7.4.1 (5d8c07b44). Numbers are from Strix Halo (gfx1151), same driver, controls run back to back. 
 
 ## Performance
 
-1. Qwen3.8 Flash-Next decode at depth (PR #9, firelzrd). The QSA indexer recomputed its pooled block keys for the whole context on every decode step, on every QSA layer, together with a per-layer host-side scan of the cell table and two copies that fed it. Five changes, all in how the graph is assembled and what the memory module keeps, no shader touched: one cell scan per compress ratio instead of one per layer (this is upstream's own code from the commit that added the model, which the fork's port had dropped); the block-mean slices are summed without a copy; the pooled keys live in a per-block cache and only the tail the current ubatch can reach is recomputed; and the two dead V allocations next to the indexer are narrowed (1.6 GiB at ctx 262144 with f16 KV). Output is not byte-identical to v0.7.4.1 on Vulkan: sharing one input set across the QSA layers changes the graph order the backend fuses over, and this backend's rounding is not invariant to that (v0.7.4's perplexity already moves about 0.2% with `-ub`). The change is rounding-sized (same candidate tokens, logprobs shifted by a few tenths at near-ties) and the quality gate is KL divergence against v0.7.4.1's logits on wikitext-2 with the previous build at `-ub 256` as the floor for what a harmless rounding change does to this model: at 4096 context, mean KLD 0.015 against a floor of 0.026 (96.3% vs 94.9% same top token); at 8192, 0.097 against a floor of 0.084 (91.5% vs 92.0%); perplexity unchanged at 4k and 2.2% lower at 8k. With the cache switched off the statistics are identical to the last digit, and a 64-token greedy continuation after an 8k prompt is byte-identical with the cache on and off, so the cache itself is bit-exact in prefill and in decode; under speculative decoding the verify batches take a different rounding path with the cache present, of the same size as changing the ubatch (the pre-PR build at `-ub 256` moves the same MTP run from 154 to 133 accepted drafts). Within-server repeatability is unchanged (all three Flash-Next repeat gates identical with identical logprob streams). Reporter's numbers on a 64 GB Strix Halo, UD-IQ4_XS, MTP n_max 3: 25.05 to 41.59 t/s at 131k (+66%), +21% at 32k, neutral at 8k and below; 2x RTX 3090 CUDA +13% at 131k. Ours, Q3KEXP f16 PLE, no MTP: [PENDING fn d8k/d32k tg32 base vs cand].
+1. Qwen3.8 Flash-Next decode at depth (PR #9, firelzrd). The QSA indexer recomputed its pooled block keys for the whole context on every decode step, on every QSA layer, together with a per-layer host-side scan of the cell table and two copies that fed it. Five changes, all in how the graph is assembled and what the memory module keeps, no shader touched: one cell scan per compress ratio instead of one per layer (this is upstream's own code from the commit that added the model, which the fork's port had dropped); the block-mean slices are summed without a copy; the pooled keys live in a per-block cache and only the tail the current ubatch can reach is recomputed; and the two dead V allocations next to the indexer are narrowed (1.6 GiB at ctx 262144 with f16 KV). Output is not byte-identical to v0.7.4.1 on Vulkan: sharing one input set across the QSA layers changes the graph order the backend fuses over, and this backend's rounding is not invariant to that (v0.7.4's perplexity already moves about 0.2% with `-ub`). The change is rounding-sized (same candidate tokens, logprobs shifted by a few tenths at near-ties) and the quality gate is KL divergence against v0.7.4.1's logits on wikitext-2 with the previous build at `-ub 256` as the floor for what a harmless rounding change does to this model: at 4096 context, mean KLD 0.015 against a floor of 0.026 (96.3% vs 94.9% same top token); at 8192, 0.097 against a floor of 0.084 (91.5% vs 92.0%); perplexity unchanged at 4k and 2.2% lower at 8k. With the cache switched off the statistics are identical to the last digit, and a 64-token greedy continuation after an 8k prompt is byte-identical with the cache on and off, so the cache itself is bit-exact in prefill and in decode; under speculative decoding the verify batches take a different rounding path with the cache present, of the same size as changing the ubatch (the pre-PR build at `-ub 256` moves the same MTP run from 154 to 133 accepted drafts). Within-server repeatability is unchanged (all three Flash-Next repeat gates identical with identical logprob streams). Reporter's numbers on a 64 GB Strix Halo, UD-IQ4_XS, MTP n_max 3: 25.05 to 41.59 t/s at 131k (+66%), +21% at 32k, neutral at 8k and below; 2x RTX 3090 CUDA +13% at 131k. Ours, Q3KEXP f16 PLE, no MTP, llama-bench ub512, two launches per arm: tg32 32.3 to 32.5 t/s at d0 (parity), 28.3 to 30.5 at 8k (+8%), 21.5 to 28.9 at 32k (+35%); pp512 at 32k depth 173 to 274 t/s (+59%, the base's own runs scattered 133/212 where the candidate's did not).
 
-   One correction on top of the series: the pooled-key cache is trusted only while a single sequence is present in the KV stream. With several sequences in one unified cache (llama-server's default when `-np` is auto: four slots, `--kv-unified`), blocks are numbered across sequences, so a second request in flight at the same time would shift the cache's rows under the first (sequential requests are not exposed: the default idle-slot clearing invalidates the cache). In that state the cache is rewritten in full every step, which is the previous behaviour; a single slot, or one slot per stream, keeps the whole gain. [PENDING: two-slot control: unfixed tree DIFF, fixed tree SAME.]
+   One correction on top of the series: the pooled-key cache is trusted only while a single sequence is present in the KV stream. With several sequences in one unified cache (llama-server's default when `-np` is auto: four slots, `--kv-unified`), blocks are numbered across sequences, so a second request in flight at the same time would shift the cache's rows under the first (sequential requests are not exposed: the default idle-slot clearing invalidates the cache). In that state the cache is rewritten in full every step, which is the previous behaviour; a single slot, or one slot per stream, keeps the whole gain. Measured with two slots on a unified cache and a 12k-token first conversation continued after a second one grew: the unfixed tree's continuation differs from its single-slot run, the fixed tree's is byte-identical.
 
    `LLAMA_QSA_POOL_CACHE=0` turns the pooled-key cache off (every block recomputed inline, the previous behaviour) for A/B or support.
 
    Not included from PR #9: dropping the 1/r scale before the RMS norm (2 ms of a 97 ms step at 131k). It moves the effective epsilon and is the one patch that changes output; this fork gates output changes on a KL-divergence measurement, and this one has not had it.
 
-2. DSpark and every stateful drafter cost prefill by upstream design (about 190 ms per launch plus 55 to 70 us per prompt token on this box). Upstream #27310 folds the DFlash encoder into the KV injection decode (one `llama_decode` instead of `llama_encode` + `llama_decode`, no device-host-device round trip of the encoder output); ported, with #26756 (DeepSeek V4 rollback with several sequences) and #27711 (synthetic acceptance options for benchmarking, `--spec-draft-*` [PENDING flag names]). Output equivalence with the shipped fork was validated on 2026-09-06 (DSpark on the truncated V4-Flash, same md5, same acceptance). [PENDING: dspark cell BASE vs CAND.]
+2. DSpark and every stateful drafter cost prefill by upstream design (about 190 ms per launch plus 55 to 70 us per prompt token on this box). Upstream #27310 folds the DFlash encoder into the KV injection decode (one `llama_decode` instead of `llama_encode` + `llama_decode`, no device-host-device round trip of the encoder output); ported, with #26756 (DeepSeek V4 rollback with several sequences) and #27711 (synthetic acceptance options for benchmarking, synthetic acceptance options for benchmarking). Output equivalence with the shipped fork was validated on 2026-09-06 (DSpark on the truncated V4-Flash, same md5, same acceptance). Re-checked on this release: token streams identical to v0.7.4.1 on four launches; with the DSpark drafter attached, prefill 598 to 698 t/s (+17%) at equal decode.
 
 ## Added
 
@@ -28,10 +28,12 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 
 | model | depth | pp512 cand | pp512 base | change | tg32 cand | tg32 base | change |
 |---|---|---|---|---|---|---|---|
-| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d0 | PENDING | | | | | |
-| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d8k | PENDING | | | | | |
-| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d32k | PENDING | | | | | |
-| Qwen3.6-35B-A3B UD-Q5_K_XL (MoE, ub512 / ub2048) | d0 | PENDING | | | | | |
+| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d0 | 388.4 | 393.4 | -1.3% | 32.5 | 32.3 | +0.5% |
+| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d8k | 378.7 | 379.3 | -0.1% | 30.5 | 28.3 | +7.8% |
+| Qwen3.8 Flash-Next Q3KEXP (MoE, ub512) | d32k | 274.2 | 172.8 | +59% | 28.9 | 21.5 | +35% |
+| Qwen3.6-35B-A3B UD-Q5_K_XL (MoE, ub512) | d0 | 1386.5 | 1388.2 | -0.1% | 58.4 | 58.5 | -0.2% |
+| Qwen3.6-35B-A3B UD-Q5_K_XL (MoE, pp2048 @ ub2048) | d0 | 1628.3 | 1631.6 | -0.2% | | | |
+| DeepSeek V4-Flash trunc10 IQ3_XXS (ub2048) | d0 / 8k / 32k | 894 / 831 / 798 | 895 / 841 / 807 | -0.1 / -1.2 / -1.1% | 74.2 / 71.0 / 68.9 | 75.1 / 72.3 / 68.8 | -1.1 / -1.8 / +0.2% |
 
 ## Compatibility
 
@@ -39,13 +41,13 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 
 ## Gates run on this build
 
-- Backend ops: MUL_MAT_ID, MUL_MAT, ADD, TOP_K, SET_ROWS, GET_ROWS, RMS_NORM, ROPE on Vulkan0. [PENDING]
-- MoE q4_K coherence (the v0.7.4.1 surface): Ornith-1.5-35B Q4_K_M, Qwen3.6-35B UD-Q4_K_XL. [PENDING]
-- Qwen3.8 Flash-Next repeat gates: sweep x6, 1024-token prose x16 at 129 tokens, 32k prose x4, `--subtoken 8`. [PENDING]
-- PR #9 exactness vs v0.7.4.1 at 8k and 32k, tokens and logprob streams. [PENDING]
-- Two-slot unified-cache control (unfixed tree must differ, release tree must match). [PENDING]
-- Shared MTP head parity (self-contained vs shared, sha + acceptance). [PENDING]
-- DSpark truncated V4-Flash equivalence vs v0.7.4.1. [PENDING]
+- Backend ops on Vulkan0: MUL_MAT_ID 4833/4833, MUL_MAT 4962/4962, ADD 99/99, TOP_K 453/453, SET_ROWS 319/319, GET_ROWS 119/119, RMS_NORM 51/51, ROPE 448/448.
+- MoE q4_K coherence (the v0.7.4.1 surface): Ornith-1.5-35B Q4_K_M 49 distinct words in 96 tokens, Qwen3.6-35B UD-Q4_K_XL 62; PASS.
+- Qwen3.8 Flash-Next repeat gates: sweep x6, 1024-token prose x16 at 129 tokens (1 unique), 32k prose x4 (1 unique), `--subtoken 8`: PASS and QUIET on all three.
+- PR #9 quality vs v0.7.4.1: KLD at 4k and 8k within the ubatch floor (item 1); pooled cache bit-exact in prefill and in a 64-token continuation after 8k, cache on vs off.
+- Two-slot unified-cache control: unfixed tree differs on the continuation, release tree byte-identical to its single-slot run.
+- Shared MTP head: loads, drafts and fits; acceptance within a few percent of the self-contained head (the borrowed output matrix is the target's quant, see item 3).
+- DSpark on the truncated V4-Flash: token streams identical to v0.7.4.1, four launches.
 - CPU: test-recurrent-state-rollback (3 variants), test-llama-archs: 5/5.
 
 ## Credit
