@@ -35,6 +35,10 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 | Qwen3.6-35B-A3B UD-Q5_K_XL (MoE, pp2048 @ ub2048) | d0 | 1628.3 | 1631.6 | -0.2% | | | |
 | DeepSeek V4-Flash trunc10 IQ3_XXS (ub2048) | d0 / 8k / 32k | 894 / 831 / 798 | 895 / 841 / 807 | -0.1 / -1.2 / -1.1% | 74.2 / 71.0 / 68.9 | 75.1 / 72.3 / 68.8 | -1.1 / -1.8 / +0.2% |
 
+## Known and not in this release
+
+- MTP speculative decoding on Qwen3.8 Flash-Next still runs through context checkpoints on this fork (`n_rs_seq = 0`; each checkpoint is the 48-layer recurrent state, 112 MiB), so every rejected round pays a restore. On a short code prompt with `--spec-draft-n-max 3` that makes MTP slower than plain decode here (10.5 vs 18.5 t/s at 76% acceptance); on prose it is a wash (19 vs 18.5). Upstream #28123 (recurrent-state rollback for qwen4exp) was tried on top of this release and changes nothing until the server requests rollback slots for the MTP draft; that wiring is the next item.
+
 ## Compatibility
 
 - Slot-save files (`--slot-save-path`) written by v0.7.4 or earlier for Qwen3.8 Flash-Next do not restore into v0.7.5: the indexer cache's V is now one element wide, so the saved state has a different shape. The restore fails with a logged "mismatched value type" error and the load returns 0 (`llama_kv_cache::state_read_data` checks type, row size and GQA width per layer before touching the cache), so the server reports the slot as not restored and the request re-prefills. The in-process prompt cache is unaffected.
