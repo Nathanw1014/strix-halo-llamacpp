@@ -1,6 +1,6 @@
 # v0.7.5 (draft, staging branch; not released)
 
-Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark prefill fix from upstream, and a hygiene change in the MoE expert GEMM. Base is v0.7.4.1 (5d8c07b44). Numbers are from Strix Halo (gfx1151), same driver, controls run back to back. 
+Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark prefill fix from upstream, and a hygiene change in the MoE expert GEMM. Base is v0.7.4.1 (5d8c07b44); release tree dff600487. Numbers are from Strix Halo (gfx1151), same driver, controls run back to back. 
 
 ## Performance
 
@@ -14,7 +14,7 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 
 2. DSpark and every stateful drafter cost prefill by upstream design (about 190 ms per launch plus 55 to 70 us per prompt token on this box). Upstream #27310 folds the DFlash encoder into the KV injection decode (one `llama_decode` instead of `llama_encode` + `llama_decode`, no device-host-device round trip of the encoder output); ported, with #26756 (DeepSeek V4 rollback with several sequences) and #27711 (synthetic acceptance options for benchmarking, synthetic acceptance options for benchmarking). Output equivalence with the shipped fork was validated on 2026-09-06 (DSpark on the truncated V4-Flash, same md5, same acceptance). Re-checked on this release: token streams identical to v0.7.4.1 on four launches; with the DSpark drafter attached, prefill 598 to 698 t/s (+17%) at equal decode.
 
-[CANDIDATE, pending the merged-tree gate] 2b. Dense prefill on the f16-B path, on by default (`GGML_VK_DENSE_F16B` auto). The f32 activation operand of a quantized dense matmul is converted to f16 before the mul_mm dispatch when two measured conditions hold: the row width is an odd multiple of 1024 (the case where halving the row stride moves it off a memory-channel camp) and the weight rows carry at least 6144 bytes (the conversion's break-even). Fitted on 276 op-level cells: 42 engage, none regress (worst -0.04%, mean +4.1%). End to end, Qwen3.8-27B UD-Q4_K_XL prefill +4.9% at ub2048 and +1.7% at ub256, decode unchanged, perplexity identical chunk for chunk; Qwen2.5-7B and Qwen3.6-35B do not engage and measure parity. `GGML_VK_DENSE_F16B=0` turns it off, `=1` forces it on for a model you have measured yourself.
+2b. Dense prefill on the f16-B path, on by default (`GGML_VK_DENSE_F16B` auto). The f32 activation operand of a quantized dense matmul is converted to f16 before the mul_mm dispatch when two measured conditions hold: the row width is an odd multiple of 1024 (the case where halving the row stride moves it off a memory-channel camp) and the weight rows carry at least 6144 bytes (the conversion's break-even). Fitted on 276 op-level cells: 42 engage, none regress (worst -0.04%, mean +4.1%). End to end, Qwen3.8-27B UD-Q4_K_XL prefill +4.9% at ub2048 and +1.7% at ub256, decode unchanged, perplexity identical chunk for chunk; Qwen2.5-7B and Qwen3.6-35B do not engage and measure parity (re-measured on the release tree: 27B +1.9% at ub256, +5.0% at ub2048, Qwen3.6 1630 vs 1635 t/s). `GGML_VK_DENSE_F16B=0` turns it off, `=1` forces it on for a model you have measured yourself.
 
 ## Added
 
