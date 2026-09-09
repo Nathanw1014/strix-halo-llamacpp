@@ -130,6 +130,18 @@ stack: they understate the current artifacts rather than overstate them.
 
 ## The fixes
 
+- **Qwen3.8-Flash-Next: cached QSA indexer keys (v0.7.5, PR #9 by firelzrd).** The sparse-attention
+  indexer used to rebuild its pooled block keys for the whole context on every step and every QSA
+  layer. They now live in a per-block cache and only the tail is recomputed; the cell-table scan runs
+  once per compress ratio; two dead V allocations are narrowed. Generation +35% and prompt processing
+  +59% at 32k on the 64 GB box, more on bigger rigs (+66% at 131k reported). The cache is trusted only
+  while one sequence is in the KV stream (several requests in flight on a unified cache fall back to
+  the previous behaviour); `LLAMA_QSA_POOL_CACHE=0` turns it off.
+- **Vulkan: dense f16-B path on by default (v0.7.5).** `GGML_VK_DENSE_F16B` converts the f32
+  activation operand of a quantized dense matmul to f16 before the mul_mm dispatch. It engages when the
+  row width is an odd multiple of 1024 and the weight rows carry at least 6144 bytes, a predicate fitted
+  on 276 measured shapes with zero regressing cells. Qwen3.8-27B +5.0% prefill at ub2048, perplexity
+  identical; models that do not engage measure parity. `=0` turns it off, `=1` forces it on.
 - **Vulkan: dequantize KV once in the FA kernel (prefill).** Quantized KV was re-dequantized on
   every FA pass; now it is dequantized once into a transposed scratch and reused. This is what
   makes quantized-KV **prefill** fast at depth (up to 2.66x f16 on head-dim-128 models). The same
@@ -455,6 +467,18 @@ These are reported by their owners rather than measured here.
 The draft head ships as a separate sidecar. It needs GTT headroom **alongside** the target, so on
 a 64 GB box you must leave room for it (`--n-cpu-moe 4` or higher). At `--n-cpu-moe 0` the target
 alone fills GTT and the first queue submit dies with `vk::DeviceLostError`.
+
+Since v0.7.5 Unsloth's "shared" heads (`mtp-Qwen3.8-Flash-Next-shared-*.gguf`, 2.79 GB at Q8_0
+instead of 4.14 GB) load in place of the self-contained ones: the draft borrows the token embedding
+and LM head from the running target, and `--fit` budgets it. The borrowed LM head is whatever your
+target quant carries (Q6_K in UD-Q3_K_XL), so the two head files draft slightly differently;
+acceptance is within a few percent of each other.
+
+MTP on this fork still runs through context checkpoints (the 48-layer recurrent state, 112 MB each),
+so every rejected round pays a restore. On short prompts with `--spec-draft-n-max 3` that can make
+MTP slower than plain decode (measured 10.5 vs 18.5 t/s on a code prompt at 76% acceptance); on
+long prose it is a wash to a small win. Wiring recurrent-state rollback into the server is the next
+item.
 
 ### Vision
 
