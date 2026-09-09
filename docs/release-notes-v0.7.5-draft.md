@@ -58,7 +58,7 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 
 ## Where this work goes next
 
-The Vulkan work is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it is maintained with the other Strix Halo contributors. The v0.7.4 correctness set is in their master (halo-box/strix-llama.cpp#20), the Vulkan performance stack is up as halo-box/strix-llama.cpp#17 with its original authorship, and the runtime changes behind this fork's Flash-Next numbers, this release's included, follow once #17 lands. Releases here continue while that happens, and the toolbox and its portable bundle will track whichever tree carries the work. Issues and pull requests for the Vulkan stack are welcome at halo-box from here on.
+The Vulkan work is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it is maintained with the other Strix Halo contributors. The v0.7.4 correctness set is in their master (halo-box/strix-llama.cpp#20), the Vulkan performance stack is up as halo-box/strix-llama.cpp#17 with its original authorship, and the runtime changes behind this fork's Flash-Next numbers, this release's included, follow once #17 lands. Until that port is complete, this repository and the fork remain the place for issues and pull requests, and releases here continue; the toolbox and its portable bundle will track whichever tree carries the work once it has moved.
 
 ## Credit
 
