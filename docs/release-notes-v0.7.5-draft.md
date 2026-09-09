@@ -56,6 +56,10 @@ Qwen3.8 Flash-Next long-context decode, Unsloth shared MTP heads, the DSpark pre
 - DSpark on the truncated V4-Flash: token streams identical to v0.7.4.1, four launches.
 - CPU: test-recurrent-state-rollback (3 variants), test-llama-archs: 5/5.
 
+## Where this work goes next
+
+The Vulkan work is moving to the halo-box community fork, halo-box/strix-llama.cpp, where it is maintained with the other Strix Halo contributors. The v0.7.4 correctness set is in their master (halo-box/strix-llama.cpp#20), the Vulkan performance stack is up as halo-box/strix-llama.cpp#17 with its original authorship, and the runtime changes behind this fork's Flash-Next numbers, this release's included, follow once #17 lands. Releases here continue while that happens, and the toolbox and its portable bundle will track whichever tree carries the work. Issues and pull requests for the Vulkan stack are welcome at halo-box from here on.
+
 ## Credit
 
 firelzrd, for PR #9 (the pooled-key cache and the profiling that ranked it); Daniel Han, for the shared QSA input set (upstream #27742); Bushido76, for asking for the shared MTP heads (#17); upstream authors of #27310 (王金旭), #27711 (Gaurav Garg), #26756 (Aman Gupta).
