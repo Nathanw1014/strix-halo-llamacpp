@@ -7,7 +7,7 @@
 # Inputs (env):
 #   LLAMA_REPO      llama.cpp fork          (default Nathanw1014/llama.cpp)
 #   LLAMA_REF       branch or commit         (default strix-halo-vulkan)
-#   MESA_REF        pinned mesa commit       (default = the commit the v0.4 driver shipped from)
+#   MESA_REF        pinned mesa commit       (default = mesa-26.2.4, the release the v0.7.8 gate tested)
 #   LIBDRM_REF      pinned libdrm tag        (default libdrm-2.4.133, what v0.4 shipped)
 #   SHADERC_REF     pinned shaderc commit    (default = the box's from-source glslc; the distro
 #                   glslc "works" but emits non-comparable SPIR-V — see BUILD.md toolchain notes)
@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 LLAMA_REPO="${LLAMA_REPO:-Nathanw1014/llama.cpp}"
 LLAMA_REF="${LLAMA_REF:-strix-halo-vulkan}"
-MESA_REF="${MESA_REF:-d18d598e275d1ab4634381c5414affe1319af6b1}"
+MESA_REF="${MESA_REF:-96cb43121031992b85767f9c1be8f3f48e22b1d2}"
 LIBDRM_REF="${LIBDRM_REF:-libdrm-2.4.133}"
 SHADERC_REF="${SHADERC_REF:-49a8724d561c13db22b52f99f2a0e2707a9a9e3c}"
 WORK="${WORK:-$HERE/_work}"

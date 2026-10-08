@@ -37,7 +37,7 @@ env:
   LLAMA_REPO: Nathanw1014/llama.cpp
   # pins for the bundled driver + shader compiler — bump deliberately, they are part of the
   # validated stack (the distro glslc is explicitly NOT acceptable, see BUILD.md)
-  MESA_REF: d18d598e275d1ab4634381c5414affe1319af6b1   # mesa main 2026-07-25, shipped in v0.4
+  MESA_REF: 96cb43121031992b85767f9c1be8f3f48e22b1d2   # mesa-26.2.4 (latest release, unmodified); was mesa main 2026-07-25 (d18d598e) through v0.7.6.1
   LIBDRM_REF: libdrm-2.4.133
   SHADERC_REF: 49a8724d561c13db22b52f99f2a0e2707a9a9e3c  # shaderc v2026.3-dev, same as the box
 
