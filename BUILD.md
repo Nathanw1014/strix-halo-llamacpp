@@ -47,6 +47,7 @@ transpose + the full mmid stack — this is the complete Vulkan stack the toolbo
 ```
 git clone https://github.com/Nathanw1014/llama.cpp && cd llama.cpp && git checkout strix-halo-vulkan
 cmake -B build-vk -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON -DLLAMA_CURL=OFF \
+  -DGGML_TRELLIS=ON -DGGML_EXL3=ON \
   -DVulkan_INCLUDE_DIR=<headers-with-vulkan-and-spirv> \
   -DVulkan_GLSLC_EXECUTABLE=<current-glslc>
 cmake --build build-vk --target llama-server llama-cli llama-bench -j

@@ -108,6 +108,7 @@ cmake -S "$WORK/llama.cpp" -B "$WORK/llama.cpp/build-vk" -G Ninja \
     -DGGML_AVX512=ON -DGGML_AVX512_VBMI=ON -DGGML_AVX512_VNNI=ON -DGGML_AVX512_BF16=ON \
     -DGGML_AVX_VNNI=ON \
     -DGGML_VULKAN=ON -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF \
+    -DGGML_TRELLIS=ON -DGGML_EXL3=ON \
     -DVulkan_INCLUDE_DIR=/usr/include \
     -DVulkan_GLSLC_EXECUTABLE="$TC/glslc" \
     "${CCACHE_ARGS[@]}"
